@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A clean, modern reminder & scheduling app. Single file, no backend.">
+<title>Remindly — Study & Personal Reminders</title>
+
+<!--
+  ============================================================================
+  PWA wiring
+  ============================================================================
+  - manifest.json : app identity, icons, standalone display
+  - sw.js         : service worker — precaches the app shell for offline use
+  - theme-color   : tints the browser UI; kept in sync with the light/dark
+                    theme by setTheme() in the script below
+  ============================================================================
+-->
+<meta name="theme-color" content="#2563eb">
+<link rel="manifest" href="manifest.json">
+<!-- iOS home-screen support (Safari reads these instead of the manifest) -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Remindly">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<!-- Browser tab favicon reuses the PWA icons -->
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+
+<!--
+  ============================================================================
+  Remindly — a self-contained reminder & scheduling web app
+  ============================================================================
+  - Single HTML file: inline CSS + vanilla JS. No frameworks, no backend.
+  - Data persists to localStorage ("remindly.reminders.v1").
+  - Modes: "Study" and "Personal" — a pill toggle filters the list, tints the
+    UI (CSS custom property --accent), and pre-fills new reminders.
+  - Reminders: title, notes, date, time, category, priority, repeat.
+  - Notifications: real browser Notification on trigger, with toast fallback.
+  - Extras: stats line, search, week-view calendar, light/dark theme.
+  ============================================================================
+-->
+
+<!-- Load Inter from Google Fonts (graceful fallback to system sans if offline) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+/* ===========================================================================
+   1. DESIGN TOKENS
+   Two themes (light/dark) via [data-theme], plus a per-mode accent that is
+   swapped on <body data-mode="study|personal">. Everything else reads from
+   these variables, so switching tone/theme is one attribute change.
+   ========================================================================= */
+:root {
+  /* Typography */
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Radii & shadows (soft, modern) */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  --shadow-md: 0 8px 24px rgba(16,24,40,.12);
+  --shadow-lg: 0 16px 48px rgba(16,24,40,.22);
+
+  /* Layout */
+  --max-w: 1060px;
+
+  /* Motion */
+  --t-fast: .16s ease;
+  --t-med:  .28s cubic-bezier(.4,0,.2,1);
+}
+
+/* ---------- Light theme (default) ---------- */
+:root, [data-theme="light"] {
+  --bg:          #f4f6fb;   /* page background */
+  --surface:     #ffffff;   /* cards / panels */
+  --surface-2:   #eef1f7;   /* subtle wells (search, week grid) */
+  --text:        #111827;   /* primary text */
+  --text-soft:   #6b7280;   /* secondary text */
+  --border:      #e5e9f0;
+  --success:     #16a34a;
+  --danger:      #dc2626;
+  --danger-soft: rgba(220,38,38,.09);
+  --overlay:     rgba(15,23,42,.45);
+
+  /* Mode accents — overridden below when mode = personal */
+  --accent:        #2563eb;              /* blue  → Study */
+  --accent-strong: #1d4ed8;
+  --accent-soft:   rgba(37,99,235,.10);  /* tag / pill fills */
+  --accent-softer: rgba(37,99,235,.06);
+}
+
+/* ---------- Dark theme ---------- */
+[data-theme="dark"] {
+  --bg:          #0d1117;
+  --surface:     #161b22;
+  --surface-2:   #1d2330;
+  --text:        #e6edf3;
+  --text-soft:   #8b949e;
+  --border:      #2a313d;
+  --success:     #4ade80;
+  --danger:      #f87171;
+  --danger-soft: rgba(248,113,113,.12);
+  --overlay:     rgba(0,0,0,.6);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-md: 0 8px 24px rgba(0,0,0,.5);
+  --shadow-lg: 0 16px 48px rgba(0,0,0,.65);
+}
+
+/* ---------- Personal mode accent (warm orange) ---------- */
+[data-mode="personal"] {
+  --accent:        #ea580c;
+  --accent-strong: #c2410c;
+  --accent-soft:   rgba(234,88,12,.12);
+  --accent-softer: rgba(234,88,12,.07);
+}
+
+/* ===========================================================================
+   2. BASE / RESET
+   ========================================================================= */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+  transition: background var(--t-med), color var(--t-med);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible focus ring for keyboard users (a11y) */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* Icon-only buttons (edit/delete, theme) */
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border: none; border-radius: var(--r-sm);
+  background: transparent; color: var(--text-soft); cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
+}
+.icon-btn:hover { background: var(--surface-2); color: var(--text); }
+
+/* ===========================================================================
+   3. HEADER
+   ========================================================================= */
+.app-header {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.header-inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 12px 20px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
+.brand-badge {
+  width: 34px; height: 34px; border-radius: 10px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff; font-size: 17px;
+  box-shadow: 0 2px 8px var(--accent-soft);
+  transition: background var(--t-med);
+}
+.brand h1 { font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+.brand h1 span { color: var(--accent); transition: color var(--t-med); }
+.brand small { display: block; font-size: 11px; font-weight: 500; color: var(--text-soft); letter-spacing: .02em; }
+
+/* Theme toggle */
+.theme-btn { font-size: 16px; }
+
+/* ===========================================================================
+   4. MODE TOGGLE (pill segmented control)
+   ========================================================================= */
+.mode-toggle {
+  position: relative;   /* IMPORTANT: anchors the absolutely-positioned thumb —
+                           without this the thumb sizes/slides to the header! */
+  display: inline-flex; padding: 4px;
+  background: var(--surface-2); border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+}
+.mode-btn {
+  position: relative; z-index: 1;           /* keep labels above the thumb */
+  flex: 1 1 0;                              /* equal widths → 50% thumb lines up */
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; cursor: pointer;
+  padding: 7px 18px; border-radius: var(--r-pill);
+  font: 600 13.5px var(--font); color: var(--text-soft); white-space: nowrap;
+  transition: color var(--t-fast);
+}
+/* The sliding white "pill" that sits behind the active label */
+.mode-thumb {
+  position: absolute; top: 4px; bottom: 4px; left: 4px;
+  width: calc(50% - 5px);
+  background: var(--surface); border-radius: var(--r-pill);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--t-med), width var(--t-med);
+}
+.mode-toggle[data-active="personal"] .mode-thumb { transform: translateX(100%); }
+.mode-btn.active { color: var(--accent-strong); }
+.mode-btn .dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  margin-right: 6px; background: var(--accent); vertical-align: 1px;
+  transition: background var(--t-med);
+}
+
+/* ===========================================================================
+   5. STATS LINE + TOOLBAR (search / add button)
+   ========================================================================= */
+.stats-line { font-size: 12.5px; color: var(--text-soft); flex-basis: 100%; }
+.stats-line b { color: var(--text); font-weight: 600; }
+.stats-line .overdue { color: var(--danger); font-weight: 600; }
+
+/* ===========================================================================
+   6. LAYOUT — two columns on desktop, stacked on mobile
+   ========================================================================= */
+.main {
+  max-width: var(--max-w); margin: 0 auto; padding: 20px;
+  display: grid; grid-template-columns: 1fr 336px; gap: 20px;
+  align-items: start;
+}
+@media (max-width: 880px) {
+  .main { grid-template-columns: 1fr; }
+  .calendar-panel { order: 2; }   /* list first on mobile */
+}
+
+/* Generic card */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-sm);
+}
+
+/* ===========================================================================
+   7. LIST PANEL
+   ========================================================================= */
+.list-panel-head {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 18px 18px 12px;
+}
+.list-panel-head h2 { font-size: 16px; font-weight: 700; letter-spacing: -.01em; margin-right: auto; }
+
+/* Search input */
+.search-wrap { position: relative; flex: 1 1 150px; max-width: 230px; }
+.search-wrap .icon-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; pointer-events: none; font-size: 13px; }
+.search-wrap input {
+  width: 100%; padding: 8px 34px 8px 12px;
+  border: 1px solid var(--border); border-radius: var(--r-pill);
+  background: var(--surface-2); color: var(--text); font: 500 13px var(--font);
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.search-wrap input:focus { border-color: var(--accent); outline: none; }
+.search-wrap input::placeholder { color: var(--text-soft); }
+
+/* Primary "Add Reminder" button */
+.add-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 18px; border: none; border-radius: var(--r-pill);
+  background: var(--accent); color: #fff; cursor: pointer;
+  font: 600 13.5px var(--font); box-shadow: 0 2px 10px var(--accent-soft);
+  transition: background var(--t-fast), transform var(--t-fast), box-shadow var(--t-med);
+}
+.add-btn:hover { background: var(--accent-strong); transform: translateY(-1px); box-shadow: 0 6px 16px var(--accent-soft); }
+.add-btn:active { transform: translateY(0); }
+
+/* Reminder list */
+.reminder-list { list-style: none; padding: 6px 10px 12px; }
+
+/* One reminder row */
+.reminder-item {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 13px 12px; border-radius: var(--r-md); position: relative;
+  transition: background var(--t-fast), opacity var(--t-med), transform var(--t-med);
+  animation: item-in .28s cubic-bezier(.4,0,.2,1) both;
+}
+@keyframes item-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.reminder-item + .reminder-item { border-top: 1px solid var(--border); }
+
+/* Overdue flag: red left border + tinted title */
+.reminder-item.overdue { background: var(--danger-soft); border-radius: var(--r-md); }
+.reminder-item.overdue::before {
+  content: ""; position: absolute; left: 0; top: 12px; bottom: 12px;
+  width: 3px; border-radius: 3px; background: var(--danger);
+}
+
+/* Hover-revealed row actions */
+.rem-actions { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity var(--t-fast); }
+.reminder-item:hover .rem-actions, .reminder-item:focus-within .rem-actions { opacity: 1; }
+@media (hover: none) { .rem-actions { opacity: 1; } } /* always visible on touch devices */
+
+/* Checkbox */
+.rem-check {
+  appearance: none; width: 20px; height: 20px; flex: none; margin-top: 2px;
+  border: 2px solid var(--border); border-radius: 6px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 12px; transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
+}
+.rem-check:hover { border-color: var(--accent); }
+.rem-check:checked { background: var(--success); border-color: var(--success); }
+.rem-check:checked::after { content: "✓"; font-weight: 800; animation: pop .2s ease; }
+@keyframes pop { 50% { transform: scale(1.4); } }
+
+/* Row text */
+.rem-body { min-width: 0; flex: 1; }
+.rem-title { font-size: 14.5px; font-weight: 600; letter-spacing: -.01em; }
+.reminder-item.done .rem-title { text-decoration: line-through; color: var(--text-soft); }
+.rem-notes { font-size: 12.5px; color: var(--text-soft); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rem-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 6px; font-size: 12px; color: var(--text-soft); align-items: center; }
+
+/* Category / priority / repeat tags */
+.tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: var(--r-pill); font-size: 11px; font-weight: 600; }
+.tag-cat { background: var(--accent-soft); color: var(--accent-strong); }
+.tag-pri { border: 1px solid var(--border); color: var(--text-soft); }
+.tag-pri.high   { color: var(--danger);  border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+.tag-pri.medium { color: #d97706; border-color: color-mix(in srgb, #d97706 35%, transparent); }
+.countdown { font-weight: 600; color: var(--accent-strong); transition: color var(--t-med); }
+.reminder-item.overdue .countdown { color: var(--danger); }
+
+/* Repeat chip */
+.tag-repeat { border: 1px dashed var(--border); color: var(--text-soft); }
+
+/* Completed section */
+.completed-sec { border-top: 1px solid var(--border); padding: 10px 18px 16px; }
+.completed-head {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  background: none; border: none; cursor: pointer; padding: 6px 0;
+  font: 600 13px var(--font); color: var(--text-soft);
+}
+.completed-head .chev { transition: transform var(--t-med); }
+.completed-head.open .chev { transform: rotate(90deg); }
+.completed-list { overflow: hidden; transition: max-height var(--t-med); }
+.completed-head .count { background: var(--surface-2); border-radius: var(--r-pill); padding: 0 8px; font-size: 11px; }
+
+/* Empty state */
+.empty-state { text-align: center; padding: 46px 20px; color: var(--text-soft); }
+.empty-state .ico { font-size: 38px; display: block; margin-bottom: 10px; }
+.empty-state h3 { font-size: 15px; color: var(--text); margin-bottom: 4px; }
+.empty-state p { font-size: 13px; max-width: 300px; margin: 0 auto 16px; }
+.empty-state .add-btn { padding: 8px 16px; font-size: 13px; }
+
+/* ===========================================================================
+   8. WEEK CALENDAR PANEL
+   ========================================================================= */
+.cal-panel { padding: 16px; }
+.cal-head { display: flex; align-items: center; margin-bottom: 12px; }
+.cal-head h3 { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-soft); }
+.cal-head .icon-btn { margin-left: auto; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.cal-dow { text-align: center; font-size: 10.5px; font-weight: 700; color: var(--text-soft); letter-spacing: .05em; padding: 4px 0; }
+.cal-day {
+  aspect-ratio: 1; min-height: 42px; border-radius: var(--r-md);
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  padding: 5px 2px; gap: 3px; border: 1px solid transparent; position: relative;
+  font-size: 12.5px; font-weight: 600;
+}
+.cal-day .num { line-height: 1; }
+.cal-day.dim { opacity: .32; }                 /* days outside this week */
+.cal-day.today { border-color: var(--accent); color: var(--accent-strong); }
+.cal-day .dots { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; }
+.cal-day .dots i {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--accent); display: block;
+}
+.cal-day .dots i.done { background: var(--text-soft); opacity: .5; }
+.cal-day .dots i.overdue { background: var(--danger); }
+.cal-legend { display: flex; gap: 14px; margin-top: 12px; font-size: 11px; color: var(--text-soft); flex-wrap: wrap; }
+.cal-legend i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+.cal-legend .l1 i { background: var(--accent); }
+.cal-legend .l2 i { background: var(--danger); }
+.cal-legend .l3 i { background: var(--text-soft); opacity: .6; }
+
+/* ===========================================================================
+   9. MODAL (add / edit reminder)
+   ========================================================================= */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--overlay); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  display: flex; align-items: flex-end; justify-content: center;   /* slides up from bottom on mobile */
+  opacity: 0; pointer-events: none; transition: opacity var(--t-med);
+}
+.modal-overlay.show { opacity: 1; pointer-events: auto; }
+
+.modal {
+  width: 100%; max-width: 460px; max-height: 92vh; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;                    /* bottom-sheet look on mobile */
+  box-shadow: var(--shadow-lg);
+  padding: 22px; transform: translateY(24px); transition: transform var(--t-med);
+}
+.modal-overlay.show .modal { transform: none; }
+@media (min-width: 640px) {
+  .modal-overlay { align-items: center; }
+  .modal { border-radius: var(--r-lg); transform: translateY(12px) scale(.98); }
+}
+
+.modal-head { display: flex; align-items: center; margin-bottom: 16px; }
+.modal-head h2 { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.modal-head .icon-btn { margin-left: auto; font-size: 15px; }
+
+/* Form */
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 12px; font-weight: 600; color: var(--text-soft); margin-bottom: 5px; letter-spacing: .02em; }
+.field input, .field select, .field textarea {
+  width: 100%; padding: 10px 12px; font: 500 14px var(--font);
+  color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.field textarea { resize: vertical; min-height: 64px; }
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-softer);
+}
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.field input.invalid { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.error-msg { color: var(--danger); font-size: 12px; margin-top: 6px; display: none; }
+.error-msg.show { display: block; }
+
+/* Modal footer actions */
+.modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+.btn { flex: 1; padding: 10px; border-radius: var(--r-md); font: 600 14px var(--font); cursor: pointer; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); transition: filter var(--t-fast), background var(--t-fast); }
+.btn:hover { filter: brightness(.97); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-strong); filter: none; }
+.btn-danger-ghost { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+.btn-danger-ghost:hover { background: var(--danger-soft); filter: none; }
+
+/* ===========================================================================
+   10. TOASTS (fallback notifications + feedback)
+   ========================================================================= */
+.toast-region {
+  position: fixed; top: 16px; right: 16px; z-index: 200;
+  display: flex; flex-direction: column; gap: 8px; width: min(340px, calc(100vw - 32px));
+}
+.toast {
+  background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+  border-radius: var(--r-md); box-shadow: var(--shadow-md);
+  padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start;
+  animation: toast-in .3s cubic-bezier(.4,0,.2,1) both;
+}
+@keyframes toast-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+.toast.leaving { opacity: 0; transform: translateX(24px); transition: all var(--t-med); }
+.toast .t-ico { font-size: 17px; line-height: 1.2; }
+.toast .t-title { font-size: 13.5px; font-weight: 700; }
+.toast .t-body { font-size: 12.5px; color: var(--text-soft); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.toast .t-close { margin-left: auto; flex: none; }
+
+/* ===========================================================================
+   11. FOOTER
+   ========================================================================= */
+.app-footer { text-align: center; padding: 26px 20px 34px; font-size: 12px; color: var(--text-soft); }
+
+/* --- Backup row (export / import) ---
+   Small, quiet ghost buttons that inherit the active accent. */
+.backup-row { display: flex; gap: 10px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+.backup-btn {
+  font: 600 12px/1 var(--font);
+  color: var(--text-soft);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+}
+.backup-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-softer);
+}
+
+/* Import merge choice bar — replaces the footer buttons while deciding */
+.merge-bar {
+  display: flex; gap: 10px; justify-content: center; align-items: center;
+  margin-top: 12px; flex-wrap: wrap;
+  font: 600 12px/1.4 var(--font); color: var(--text-soft);
+}
+.merge-bar .backup-btn { border-color: var(--accent); color: var(--accent); }
+.merge-bar .backup-btn:hover { background: var(--accent-soft); }
+.merge-bar .cancel { color: var(--text-soft); border-color: var(--border); }
+.merge-bar .cancel:hover { color: var(--text); background: var(--surface-2); }
+
+/* ===========================================================================
+   12. SMALL SCREENS
+   ========================================================================= */
+@media (max-width: 560px) {
+  .header-inner { padding: 10px 14px; gap: 10px; }
+  .brand small { display: none; }
+  /* Compact header so brand + toggle + theme fit one row on phones */
+  .brand-badge { width: 30px; height: 30px; font-size: 15px; border-radius: 9px; }
+  .brand h1 { font-size: 16px; }
+  .mode-btn { padding: 6px 13px; font-size: 12.5px; }
+  .theme-btn { width: 32px; height: 32px; }
+  .main { padding: 14px; gap: 14px; }
+  .list-panel-head { padding: 14px 12px 10px; }
+  .search-wrap { max-width: none; flex-basis: 100%; order: 3; }  /* search wraps to its own row */
+  .reminder-list { padding: 4px 6px 8px; }
+  .field-row, .field-row-3 { grid-template-columns: 1fr 1fr; }
+  .field-row-3 .field:last-child { grid-column: span 2; }
+}
+</style>
+</head>
+
+<!-- data-mode drives the accent color; data-theme drives light/dark -->
+<body data-mode="study" data-theme="light">
+
+<!-- =======================================================================
+     HEADER — brand, mode toggle, theme switch
+     ======================================================================= -->
+<header class="app-header">
+  <div class="header-inner">
+
+    <div class="brand">
+      <div class="brand-badge" aria-hidden="true">⏰</div>
+      <h1>Remind<span>ly</span></h1>
+      <small id="todayLine"></small>
+    </div>
+
+    <!-- Study / Personal segmented pill toggle -->
+    <div class="mode-toggle" id="modeToggle" data-active="study" role="tablist" aria-label="Reminder category">
+      <span class="mode-thumb" aria-hidden="true"></span>
+      <button class="mode-btn active" data-mode="study" role="tab" aria-selected="true">
+        <span class="dot" aria-hidden="true"></span>Study
+      </button>
+      <button class="mode-btn" data-mode="personal" role="tab" aria-selected="false">
+        <span class="dot" aria-hidden="true"></span>Personal
+      </button>
+    </div>
+
+    <!-- Light / dark toggle -->
+    <button class="icon-btn theme-btn" id="themeBtn" title="Toggle light/dark theme" aria-label="Toggle theme">🌙</button>
+  </div>
+</header>
+
+<!-- =======================================================================
+     MAIN — list panel + week calendar panel
+     ======================================================================= -->
+<main class="main">
+
+  <!-- ------------------------------ LIST ------------------------------ -->
+  <section class="card list-panel" aria-label="Reminders">
+    <div class="list-panel-head">
+      <h2 id="listTitle">Study reminders</h2>
+
+      <!-- Search within the active category -->
+      <div class="search-wrap">
+        <input type="search" id="searchInput" placeholder="Search reminders…" aria-label="Search reminders">
+        <span class="icon-btn" aria-hidden="true">🔍</span>
+      </div>
+
+      <!-- Add button (category defaults to active mode) -->
+      <button class="add-btn" id="addBtn">＋ Add Reminder</button>
+
+      <!-- Stats line: "3 due today · 1 overdue" -->
+      <p class="stats-line" id="statsLine" aria-live="polite"></p>
+    </div>
+
+    <ul class="reminder-list" id="reminderList"><!-- rendered by JS --></ul>
+
+    <!-- Collapsible "Completed" section (rendered by JS) -->
+    <div class="completed-sec" id="completedSec" hidden>
+      <button class="completed-head" id="completedHead" aria-expanded="false">
+        <span class="chev" aria-hidden="true">▸</span>
+        Completed <span class="count" id="completedCount">0</span>
+      </button>
+      <div class="completed-list" id="completedList"></div>
+    </div>
+
+    <!-- Friendly empty state (rendered by JS) -->
+    <div class="empty-state" id="emptyState" hidden>
+      <span class="ico" id="emptyIco">🎉</span>
+      <h3 id="emptyTitle">All clear!</h3>
+      <p id="emptyText">No reminders here yet.</p>
+      <button class="add-btn" id="emptyAddBtn">＋ Add your first reminder</button>
+    </div>
+  </section>
+
+  <!-- --------------------------- WEEK VIEW ---------------------------- -->
+  <aside class="card cal-panel calendar-panel" aria-label="Week view">
+    <div class="cal-head">
+      <h3>This week</h3>
+      <button class="icon-btn" id="calTodayBtn" title="Jump to current week" aria-label="Jump to current week">⟲</button>
+    </div>
+    <div class="cal-grid" id="calGrid"><!-- rendered by JS --></div>
+    <div class="cal-legend">
+      <span class="l1"><i></i>Upcoming</span>
+      <span class="l2"><i></i>Overdue</span>
+      <span class="l3"><i></i>Completed</span>
+    </div>
+  </aside>
+</main>
+
+<footer class="app-footer">
+  Remindly · everything is stored locally in your browser — no account, no backend.
+
+  <!-- Backup: reminders live only in this browser, so offer a manual
+       export (download a .json file) / import (restore from one). -->
+  <div class="backup-row">
+    <button type="button" class="backup-btn" id="exportBtn" title="Download all reminders as a JSON file">
+      ⬇︎ Export backup
+    </button>
+    <button type="button" class="backup-btn" id="importBtn" title="Restore reminders from a previously exported JSON file">
+      ⬆︎ Import backup
+    </button>
+  </div>
+</footer>
+
+<!-- Hidden file picker used by the Import button (kept outside the footer
+     so styling stays simple; click() is triggered from JS). -->
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<!-- =======================================================================
+     MODAL — add / edit reminder
+     ======================================================================= -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <h2 id="modalTitle">Add Reminder</h2>
+      <button class="icon-btn" id="modalCloseBtn" aria-label="Close">✕</button>
+    </div>
+
+    <form id="remForm" novalidate>
+      <!-- Title (required) -->
+      <div class="field">
+        <label for="fTitle">Title *</label>
+        <input type="text" id="fTitle" maxlength="120" placeholder="e.g. Physics chapter 4 review" autocomplete="off">
+        <p class="error-msg" id="titleErr">Please give your reminder a title.</p>
+      </div>
+
+      <!-- Notes (optional) -->
+      <div class="field">
+        <label for="fNotes">Notes</label>
+        <textarea id="fNotes" maxlength="500" placeholder="Optional details…"></textarea>
+      </div>
+
+      <!-- Date + Time -->
+      <div class="field-row">
+        <div class="field">
+          <label for="fDate">Date *</label>
+          <input type="date" id="fDate">
+        </div>
+        <div class="field">
+          <label for="fTime">Time *</label>
+          <input type="time" id="fTime">
+        </div>
+      </div>
+
+      <!-- Category + Priority -->
+      <div class="field-row">
+        <div class="field">
+          <label for="fCategory">Category</label>
+          <select id="fCategory">
+            <option value="study">Study</option>
+            <option value="personal">Personal</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="fPriority">Priority</label>
+          <select id="fPriority">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Repeat -->
+      <div class="field">
+        <label for="fRepeat">Repeat</label>
+        <select id="fRepeat">
+          <option value="none" selected>None</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+        </select>
+      </div>
+
+      <div class="modal-actions">
+        <!-- Shown only when editing an existing reminder -->
+        <button type="button" class="btn btn-danger-ghost" id="deleteBtn" hidden>Delete</button>
+        <button type="button" class="btn" id="cancelBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="saveBtn">Save Reminder</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Toast region (fallback notifications + feedback messages) -->
+<div class="toast-region" id="toastRegion" aria-live="polite"></div>
+
+<script>
+/* ============================================================================
+   Remindly — application script
+   ----------------------------------------------------------------------------
+   Sections:
+     1. Constants & state
+     2. Utilities (dates, storage, misc)
+     3. Rendering — list, completed, empty state, stats, calendar
+     4. Modal (add / edit)
+     5. Mode & theme
+     6. Notifications (permission, trigger check, sound, toasts)
+     7. Event wiring & boot
+   ========================================================================= */
+(function () {
+  'use strict';
+
+  /* ==========================================================================
+     1. CONSTANTS & STATE
+     ========================================================================== */
+
+  var STORAGE_KEY   = 'remindly.reminders.v1'; // all reminders
+  var PREFS_KEY     = 'remindly.prefs.v1';     // theme / mode / collapsed state
+
+  /** @type {Array<Object>} source of truth for every reminder */
+  var state = {
+    reminders: [],
+    mode: 'study',            // active category tab: 'study' | 'personal'
+    theme: 'light',           // 'light' | 'dark'
+    completedOpen: false,     // is the Completed section expanded?
+    query: '',                // search text (within active category)
+    editingId: null           // reminder being edited (null = adding)
+  };
+
+  // Track which reminders have already fired so notifications trigger once.
+  var fired = {}; // id -> true (not persisted; re-arming handled on load/rollover)
+
+  /* ==========================================================================
+     2. UTILITIES
+     ========================================================================== */
+
+  var $ = function (sel) { return document.querySelector(sel); };
+
+  /** Pad a number to two digits ("9" -> "09"). */
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  /** Reminder's target Date object (from its date + time strings). */
+  function remDate(r) { return new Date(r.date + 'T' + (r.time || '09:00')); }
+
+  /** True if the reminder's time is in the past and it isn't done. */
+  function isOverdue(r) {
+    return !r.done && remDate(r).getTime() < Date.now();
+  }
+
+  /** Local yyyy-mm-dd for a Date (NOT toISOString — that's UTC). */
+  function toLocalISO(d) {
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  /** Is the reminder scheduled for "today"? */
+  function isToday(r) {
+    return r.date === toLocalISO(new Date());
+  }
+
+  /** Format time as h:mm am/pm (locale-independent, compact). */
+  function fmtTime(hhmm) {
+    var p = hhmm.split(':'), h = +p[0], m = p[1];
+    var am = h < 12, h12 = h % 12; if (h12 === 0) h12 = 12;
+    return h12 + ':' + m + ' ' + (am ? 'am' : 'pm');
+  }
+
+  /** Friendly absolute date label: "Today", "Tomorrow", "Mon, Sep 14". */
+  function fmtDate(dateStr) {
+    var d = new Date(dateStr + 'T00:00');
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var diff = Math.round((d - today) / 86400000);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Tomorrow';
+    if (diff === -1) return 'Yesterday';
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  /**
+   * Relative countdown for a reminder, e.g. "in 2 hours", "in 3 days",
+   * "2 hours ago", "now". Human-first, coarse-grained.
+   */
+  function countdown(r) {
+    var ms = remDate(r) - Date.now();
+    var abs = Math.abs(ms), future = ms >= 0;
+    var mins = Math.round(abs / 60000);
+    var label;
+    if (mins < 1)        label = 'now';
+    else if (mins < 60)  label = mins + ' min' + (mins === 1 ? '' : 's');
+    else if (mins < 1440) label = Math.floor(mins / 60) + ' hr' + (Math.floor(mins / 60) === 1 ? '' : 's');
+    else                 label = Math.round(mins / 1440) + ' day' + (Math.round(mins / 1440) === 1 ? '' : 's');
+    if (label === 'now') return 'now';
+    return future ? 'in ' + label : label + ' ago';
+  }
+
+  /* ---------------------------- storage ------------------------------ */
+
+  /** Load reminders + prefs from localStorage (fail-soft). */
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      state.reminders = raw ? JSON.parse(raw) : [];
+    } catch (e) { state.reminders = []; }
+
+    try {
+      var prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+      if (prefs.theme) state.theme = prefs.theme;
+      if (prefs.mode)  state.mode  = prefs.mode;
+      if (typeof prefs.completedOpen === 'boolean') state.completedOpen = prefs.completedOpen;
+    } catch (e) { /* defaults already set */ }
+  }
+
+  /** Persist reminders. */
+  function saveReminders() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.reminders)); }
+    catch (e) { toast('⚠️', 'Storage full', 'Could not save reminders.'); }
+  }
+
+  /** Persist UI prefs. */
+  function savePrefs() {
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify({
+        theme: state.theme, mode: state.mode, completedOpen: state.completedOpen
+      }));
+    } catch (e) { /* non-critical */ }
+  }
+
+  /** Stable-ish unique id. */
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  /** Escape HTML in user-entered strings before injecting into innerHTML. */
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  /* ==========================================================================
+     3. RENDERING
+     ========================================================================== */
+
+  /** Reminders in the active category matching the search query. */
+  function visibleReminders() {
+    var q = state.query.toLowerCase();
+    return state.reminders.filter(function (r) {
+      if (r.category !== state.mode) return false;
+      if (!q) return true;
+      return (r.title + ' ' + (r.notes || '')).toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  /** Sort: soonest first; completed items sink to the bottom. */
+  function bySoonest(a, b) {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    return remDate(a) - remDate(b);
+  }
+
+  /** Full re-render of list, completed section, stats and calendar. */
+  function render() {
+    renderList();
+    renderCompleted();
+    renderStats();
+    renderCalendar();
+  }
+
+  /* ------------------------------ list ------------------------------- */
+
+  function renderList() {
+    var ul = $('#reminderList');
+    var items = visibleReminders().filter(function (r) { return !r.done; })
+                                   .sort(bySoonest);
+
+    var html = items.map(function (r) {
+      var overdue = isOverdue(r);
+      return '' +
+      '<li class="reminder-item' + (overdue ? ' overdue' : '') + '" data-id="' + r.id + '">' +
+        '<input type="checkbox" class="rem-check" data-action="toggle" aria-label="Mark &quot;' + esc(r.title) + '&quot; done"' + (r.done ? ' checked' : '') + '>' +
+        '<div class="rem-body">' +
+          '<div class="rem-title">' + esc(r.title) + '</div>' +
+          (r.notes ? '<div class="rem-notes">' + esc(r.notes) + '</div>' : '') +
+          '<div class="rem-meta">' +
+            '<span class="tag tag-cat">' + esc(r.category) + '</span>' +
+            '<span class="tag tag-pri ' + r.priority + '">' + r.priority + '</span>' +
+            '<span>📅 ' + fmtDate(r.date) + ' · ' + fmtTime(r.time) + '</span>' +
+            '<span class="countdown" data-countdown="' + r.id + '">' + esc(countdown(r)) + '</span>' +
+            (r.repeat && r.repeat !== 'none' ? '<span class="tag tag-repeat">🔁 ' + r.repeat + '</span>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="rem-actions">' +
+          '<button class="icon-btn" data-action="edit" title="Edit" aria-label="Edit reminder">✏️</button>' +
+          '<button class="icon-btn" data-action="delete" title="Delete" aria-label="Delete reminder">🗑️</button>' +
+        '</div>' +
+      '</li>';
+    }).join('');
+
+    ul.innerHTML = html;
+    $('#emptyState').hidden = items.length > 0 || hasCompletedVisible();
+    renderEmptyCopy();
+  }
+
+  /* --------------------------- completed ----------------------------- */
+
+  function hasCompletedVisible() {
+    return visibleReminders().some(function (r) { return r.done; });
+  }
+
+  function renderCompleted() {
+    var sec = $('#completedSec');
+    var done = visibleReminders().filter(function (r) { return r.done; })
+                                  .sort(bySoonest);
+    sec.hidden = done.length === 0;
+
+    $('#completedCount').textContent = done.length;
+    $('#completedHead').classList.toggle('open', state.completedOpen);
+    $('#completedHead').setAttribute('aria-expanded', String(state.completedOpen));
+
+    var listEl = $('#completedList');
+    listEl.innerHTML = done.map(function (r) {
+      return '' +
+      '<li class="reminder-item done" data-id="' + r.id + '">' +
+        '<input type="checkbox" class="rem-check" data-action="toggle" checked aria-label="Mark &quot;' + esc(r.title) + '&quot; not done">' +
+        '<div class="rem-body">' +
+          '<div class="rem-title">' + esc(r.title) + '</div>' +
+          '<div class="rem-meta">' +
+            '<span class="tag tag-cat">' + esc(r.category) + '</span>' +
+            '<span>📅 ' + fmtDate(r.date) + ' · ' + fmtTime(r.time) + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="rem-actions">' +
+          '<button class="icon-btn" data-action="delete" title="Delete" aria-label="Delete reminder">🗑️</button>' +
+        '</div>' +
+      '</li>';
+    }).join('');
+
+    // Animate open/close via max-height (0 -> content height).
+    listEl.style.maxHeight = state.completedOpen ? listEl.scrollHeight + 'px' : '0px';
+  }
+
+  /* -------------------------- empty state ---------------------------- */
+
+  function renderEmptyCopy() {
+    var empty = $('#emptyState');
+    if (empty.hidden) return;
+    var searching = state.query.length > 0;
+    $('#emptyIco').textContent   = searching ? '🔍' : '🎉';
+    $('#emptyTitle').textContent = searching ? 'No matches' : 'All clear!';
+    $('#emptyText').textContent  = searching
+      ? 'Nothing in ' + state.mode + ' matches "' + state.query + '".'
+      : 'Nothing scheduled in ' + state.mode + '. Add one and we\'ll nudge you right on time.';
+    $('#emptyAddBtn').hidden = searching; // hide "add" CTA while searching
+  }
+
+  /* ----------------------------- stats ------------------------------- */
+
+  /** "3 due today · 1 overdue" across BOTH categories (global view). */
+  function renderStats() {
+    var dueToday = state.reminders.filter(function (r) { return !r.done && isToday(r); }).length;
+    var overdue  = state.reminders.filter(isOverdue).length;
+    var parts = [];
+    if (dueToday) parts.push('<b>' + dueToday + '</b> due today');
+    if (overdue)  parts.push('<span class="overdue">' + overdue + ' overdue</span>');
+    $('#statsLine').innerHTML = parts.length ? parts.join(' · ') : 'You\'re all caught up ✨';
+  }
+
+  /* ---------------------------- calendar ----------------------------- */
+
+  var calWeekStart = null; // Date (Sunday) of the week being viewed
+
+  /** Shift week start to the Sunday of the given date's week. */
+  function sundayOf(d) {
+    var s = new Date(d); s.setHours(0, 0, 0, 0);
+    s.setDate(s.getDate() - s.getDay());
+    return s;
+  }
+
+  function renderCalendar() {
+    if (!calWeekStart) calWeekStart = sundayOf(new Date());
+    var grid = $('#calGrid');
+    var dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+    // Group reminders by local date string for quick lookup.
+    var byDate = {};
+    state.reminders.forEach(function (r) {
+      (byDate[r.date] = byDate[r.date] || []).push(r);
+    });
+
+    var html = dows.map(function (d) { return '<div class="cal-dow">' + d + '</div>'; }).join('');
+    var todayISO = toLocalISO(new Date());
+
+    for (var i = 0; i < 7; i++) {
+      var day = new Date(calWeekStart);
+      day.setDate(calWeekStart.getDate() + i);
+      var iso = toLocalISO(day);
+      var rems = byDate[iso] || [];
+
+      var dots = rems.slice(0, 4).map(function (r) {
+        var cls = r.done ? 'done' : (isOverdue(r) ? 'overdue' : '');
+        return '<i class="' + cls + '" title="' + esc(r.title) + '"></i>';
+      }).join('');
+
+      html += '<div class="cal-day' + (iso === todayISO ? ' today' : '') + '">' +
+                '<span class="num">' + day.getDate() + '</span>' +
+                '<span class="dots">' + dots + '</span>' +
+              '</div>';
+    }
+
+    grid.innerHTML = html;
+  }
+
+  /* ==========================================================================
+     4. MODAL — add / edit
+     ========================================================================== */
+
+  var overlay = $('#modalOverlay');
+
+  /** Open modal. editingId=null → add new (category pre-set to active mode). */
+  function openModal(editingId) {
+    state.editingId = editingId || null;
+    var r = editingId ? state.reminders.find(function (x) { return x.id === editingId; }) : null;
+
+    $('#modalTitle').textContent = r ? 'Edit Reminder' : 'Add Reminder';
+    $('#fTitle').value     = r ? r.title : '';
+    $('#fNotes').value     = r ? (r.notes || '') : '';
+    // New reminders default date/time: today at the next round hour.
+    var def = new Date(Date.now() + 60 * 60 * 1000);
+    def.setMinutes(0, 0, 0);
+    $('#fDate').value = r ? r.date : toLocalISO(def);
+    $('#fTime').value = r ? r.time : pad(def.getHours()) + ':00';
+    $('#fCategory').value   = r ? r.category : state.mode;   // ← defaults to active tab
+    $('#fPriority').value   = r ? r.priority : 'medium';
+    $('#fRepeat').value     = r ? r.repeat : 'none';
+
+    $('#deleteBtn').hidden = !r;      // "Delete" only exists when editing
+    $('#titleErr').classList.remove('show');
+    $('#fTitle').classList.remove('invalid');
+
+    overlay.classList.add('show');
+    setTimeout(function () { $('#fTitle').focus(); }, 60); // focus after transition starts
+  }
+
+  function closeModal() {
+    overlay.classList.remove('show');
+    state.editingId = null;
+  }
+
+  /** Validate + save (create or update), then re-render. */
+  function saveFromForm() {
+    var title = $('#fTitle').value.trim();
+    var date  = $('#fDate').value;
+    var time  = $('#fTime').value;
+
+    // Basic validation: title + date + time required.
+    if (!title) {
+      $('#titleErr').classList.add('show');
+      $('#fTitle').classList.add('invalid');
+      $('#fTitle').focus();
+      return;
+    }
+    if (!date || !time) {
+      toast('⚠️', 'Missing date or time', 'Pick when this reminder should fire.');
+      return;
+    }
+
+    if (state.editingId) {
+      // Update in place.
+      var r = state.reminders.find(function (x) { return x.id === state.editingId; });
+      if (r) {
+        r.title = title; r.notes = $('#fNotes').value.trim();
+        r.date = date;   r.time = time;
+        r.category = $('#fCategory').value;
+        r.priority = $('#fPriority').value;
+        r.repeat = $('#fRepeat').value;
+      }
+      toast('✏️', 'Reminder updated', title);
+    } else {
+      state.reminders.push({
+        id: uid(), title: title, notes: $('#fNotes').value.trim(),
+        date: date, time: time,
+        category: $('#fCategory').value,
+        priority: $('#fPriority').value,
+        repeat: $('#fRepeat').value,
+        done: false, createdAt: Date.now()
+      });
+      toast('✅', 'Reminder added', title);
+    }
+
+    saveReminders();
+    closeModal();
+    render();
+  }
+
+  /* ==========================================================================
+     5. MODE & THEME
+     ========================================================================== */
+
+  /** Switch Study/Personal mode; re-render + persist. */
+  function setMode(mode) {
+    state.mode = mode;
+    document.body.dataset.mode = mode;       // drives accent color via CSS
+    $('#modeToggle').dataset.active = mode;  // slides the pill thumb
+    document.querySelectorAll('.mode-btn').forEach(function (b) {
+      var active = b.dataset.mode === mode;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-selected', String(active));
+    });
+    $('#listTitle').textContent = mode === 'study' ? 'Study reminders' : 'Personal reminders';
+    savePrefs();
+    render();
+  }
+
+  function setTheme(theme) {
+    state.theme = theme;
+    document.documentElement.dataset.theme = theme;
+    $('#themeBtn').textContent = theme === 'dark' ? '☀️' : '🌙';
+    // Keep the browser UI (address bar, status bar) tinted to match the theme.
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0d1117' : '#2563eb');
+    savePrefs();
+  }
+
+  /* ==========================================================================
+     6. NOTIFICATIONS
+     ========================================================================== */
+
+  /**
+   * Ask for Notification permission shortly after load (a small delay avoids
+   * the "permission prompt immediately on load" jank). Non-secure origins /
+   * unsupported browsers fail soft — toasts still work.
+   */
+  function setupNotifications() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+      setTimeout(function () {
+        try { Notification.requestPermission(); } catch (e) { /* ignore */ }
+      }, 1500);
+    }
+  }
+
+  /** Fire a browser Notification (if allowed) for a due reminder. */
+  function notify(rem) {
+    var body = (rem.notes ? rem.notes + '\n' : '') + fmtDate(rem.date) + ' · ' + fmtTime(rem.time);
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        var n = new Notification('⏰ ' + rem.title, { body: body, tag: rem.id }); // tag dedupes repeats
+        n.onclick = function () { window.focus(); n.close(); };
+      } catch (e) { toastFallback(rem); } // Some browsers throw if SW-less; fall back
+    } else {
+      toastFallback(rem);
+    }
+  }
+
+  /** In-app toast used when notifications are blocked/unavailable. */
+  function toastFallback(rem) {
+    toast('⏰', rem.title, rem.notes || 'Scheduled for ' + fmtDate(rem.date) + ' · ' + fmtTime(rem.time), 8000);
+  }
+
+  /**
+   * THE TICK — runs every second.
+   * Fires each reminder exactly once when its time arrives, handles repeat
+   * rollover (daily/weekly), and refreshes the visible countdowns.
+   */
+  function tick() {
+    var now = Date.now();
+    var changed = false;
+
+    state.reminders.forEach(function (r) {
+      if (r.done) return;
+      var t = remDate(r).getTime();
+
+      if (!fired[r.id] && t <= now && now - t < 60000) { // fire within 1 min of due time
+        fired[r.id] = true;
+        notify(r);
+        playChime();
+
+        // Repeat rollover: push the reminder to its next occurrence.
+        if (r.repeat === 'daily') {
+          r.date = shiftDays(r.date, 1); changed = true;
+        } else if (r.repeat === 'weekly') {
+          r.date = shiftDays(r.date, 7); changed = true;
+        }
+      }
+    });
+
+    if (changed) saveReminders();
+
+    // Cheap per-second refresh of countdown labels only (no full re-render).
+    document.querySelectorAll('[data-countdown]').forEach(function (el) {
+      var r = state.reminders.find(function (x) { return x.id === el.dataset.countdown; });
+      if (r) el.textContent = countdown(r);
+    });
+  }
+
+  /** yyyy-mm-dd + n days → new yyyy-mm-dd. */
+  function shiftDays(dateStr, n) {
+    var d = new Date(dateStr + 'T00:00');
+    d.setDate(d.getDate() + n);
+    return toLocalISO(d);
+  }
+
+  /** Soft chime via WebAudio; silent if the browser blocks autoplay. */
+  function playChime() {
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      var ctx = playChime._ctx || (playChime._ctx = new Ctx());
+      if (ctx.state === 'suspended') ctx.resume();
+      var t = ctx.currentTime;
+      [[880, 0], [1320, 0.18]].forEach(function (f) {  // pleasant two-note ding
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.value = f[0]; o.type = 'sine';
+        g.gain.setValueAtTime(0.0001, t + f[1]);
+        g.gain.exponentialRampToValueAtTime(0.12, t + f[1] + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + f[1] + 0.5);
+        o.connect(g).connect(ctx.destination);
+        o.start(t + f[1]); o.stop(t + f[1] + 0.55);
+      });
+    } catch (e) { /* audio is best-effort */ }
+  }
+
+  /* ----------------------------- toasts ------------------------------ */
+
+  /** Show an in-app toast. opts: { timeout, onClose } */
+  function toast(ico, title, body, timeout) {
+    var region = $('#toastRegion');
+    var el = document.createElement('div');
+    el.className = 'toast';
+    el.innerHTML =
+      '<span class="t-ico" aria-hidden="true">' + ico + '</span>' +
+      '<div><div class="t-title">' + esc(title) + '</div>' +
+      (body ? '<div class="t-body">' + esc(body) + '</div>' : '') + '</div>' +
+      '<button class="icon-btn t-close" aria-label="Dismiss">✕</button>';
+
+    function dismiss() {
+      el.classList.add('leaving');
+      setTimeout(function () { el.remove(); }, 300);
+    }
+    el.querySelector('.t-close').onclick = dismiss;
+    region.appendChild(el);
+    setTimeout(dismiss, timeout || 4000);
+  }
+
+  /* ==========================================================================
+     6b. BACKUP — EXPORT / IMPORT
+     ----------------------------------------------------------------------------
+     Reminders live only in this browser's localStorage, so we offer a manual
+     safety net: download everything as a .json file, and restore from one.
+     The file is the same shape the app stores, plus a small header for
+     validation and human readers.
+     ========================================================================== */
+
+  /** Download all reminders as a dated .json file. */
+  function exportBackup() {
+    var payload = {
+      app: 'remindly',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      count: state.reminders.length,
+      reminders: state.reminders
+    };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var d = new Date();
+    var stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+    a.href = url;
+    a.download = 'remindly-backup-' + stamp + '.remindly.json';
+    document.body.appendChild(a); // Firefox needs it in the DOM before click
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    toast('📦', 'Backup downloaded', state.reminders.length + ' reminder' + (state.reminders.length === 1 ? '' : 's') + ' saved to file.');
+  }
+
+  /**
+   * Validate + import reminders from a file.
+   * Returns a count of added items, or throws Error with a friendly message.
+   */
+  function parseBackupFile(fileText) {
+    var data;
+    try { data = JSON.parse(fileText); }
+    catch (e) { throw new Error('That file isn\u2019t valid JSON.'); }
+
+    // Header check — accept only files this app produced.
+    if (!data || data.app !== 'remindly' || !Array.isArray(data.reminders)) {
+      throw new Error('That doesn\u2019t look like a Remindly backup file.');
+    }
+
+    // Keep only well-formed reminders; repair/normalize what we can.
+    var clean = [];
+    data.reminders.forEach(function (r) {
+      if (!r || typeof r.title !== 'string' || !r.title.trim() ||
+          typeof r.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(r.date) ||
+          typeof r.time !== 'string' || !/^\d{2}:\d{2}$/.test(r.time)) {
+        return; // skip malformed entries instead of failing the whole import
+      }
+      clean.push({
+        id: (typeof r.id === 'string' && r.id) ? r.id : uid(),
+        title: r.title.trim(),
+        notes: typeof r.notes === 'string' ? r.notes : '',
+        date: r.date,
+        time: r.time,
+        category: r.category === 'personal' ? 'personal' : 'study',
+        priority: ['low', 'medium', 'high'].indexOf(r.priority) !== -1 ? r.priority : 'medium',
+        repeat: ['none', 'daily', 'weekly'].indexOf(r.repeat) !== -1 ? r.repeat : 'none',
+        done: !!r.done,
+        createdAt: typeof r.createdAt === 'number' ? r.createdAt : Date.now()
+      });
+    });
+
+    if (!clean.length) {
+      throw new Error('No valid reminders were found in that file.');
+    }
+    return clean;
+  }
+
+  /** Open the file picker and handle an imported backup. */
+  function importBackup() {
+    $('#importFile').click();
+  }
+
+  /**
+   * Merge-strategy prompt: when the file's reminders collide with existing
+   * ones (same id), decide keep/replace. Renders a small inline bar in the
+   * footer offering both options; anything else cancels.
+   */
+  function offerMerge(clean) {
+    var footer = document.querySelector('.backup-row');
+    var existingIds = {};
+    state.reminders.forEach(function (r) { existingIds[r.id] = true; });
+    var collisions = clean.filter(function (r) { return existingIds[r.id]; }).length;
+
+    var bar = document.createElement('div');
+    bar.className = 'merge-bar';
+    var n = clean.length;
+    bar.innerHTML =
+      '<span>Found ' + n + ' reminder' + (n === 1 ? '' : 's') +
+      (collisions ? ' (' + collisions + ' already exist' + (n - collisions ? ' … ' : '') + ')' : '') + '.</span>' +
+      '<button type="button" class="backup-btn" data-m="add">Add ' + n + '</button>' +
+      (collisions ? '<button type="button" class="backup-btn" data-m="replace">Replace ' + collisions + '</button>' : '') +
+      '<button type="button" class="backup-btn cancel" data-m="cancel">Cancel</button>';
+
+    footer.replaceWith(bar);
+
+    function restore() { bar.replaceWith(footer); } // put the original row back
+
+    bar.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-m]');
+      if (!b) return;
+      var mode = b.dataset.m;
+      restore();
+      if (mode === 'cancel') return;
+
+      if (mode === 'add') {
+        // "Add": append everything that isn't already present (by id).
+        var seen = {};
+        state.reminders.forEach(function (r) { seen[r.id] = true; });
+        var added = clean.filter(function (r) { return !seen[r.id]; });
+        state.reminders = state.reminders.concat(added);
+        toast('📥', 'Imported', added.length + ' reminder' + (added.length === 1 ? '' : 's') + ' added.');
+      } else {
+        // "Replace": overwrite existing items whose ids collide.
+        var byId = {};
+        state.reminders.forEach(function (r) { byId[r.id] = r; });
+        var replaced = 0;
+        clean.forEach(function (r) {
+          if (byId[r.id]) { replaced++; Object.assign(byId[r.id], r); }
+          else state.reminders.push(r);
+        });
+        toast('📥', 'Imported', replaced + ' updated, ' + (clean.length - replaced) + ' added.');
+      }
+      rearmFired();      // imported items may be due now — arm them properly
+      saveReminders();
+      render();
+    });
+  }
+
+  function wireEvents() {
+    // --- Mode toggle ---
+    document.querySelectorAll('.mode-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () { setMode(btn.dataset.mode); });
+    });
+
+    // --- Theme toggle ---
+    $('#themeBtn').addEventListener('click', function () {
+      setTheme(state.theme === 'dark' ? 'light' : 'dark');
+    });
+
+    // --- Add buttons ---
+    $('#addBtn').addEventListener('click', function () { openModal(null); });
+    $('#emptyAddBtn').addEventListener('click', function () { openModal(null); });
+
+    // --- Search (filters within active category) ---
+    $('#searchInput').addEventListener('input', function (e) {
+      state.query = e.target.value.trim();
+      renderList(); renderCompleted(); renderEmptyCopy();
+    });
+
+    // --- List click delegation: toggle / edit / delete ---
+    document.body.addEventListener('click', function (e) {
+      var actionEl = e.target.closest('[data-action]');
+      if (!actionEl) return;
+      var action = actionEl.dataset.action;
+
+      // For checkbox clicks, walk up to the reminder row.
+      var row = actionEl.closest('.reminder-item');
+      var id = row ? row.dataset.id : null;
+      var rem = id ? state.reminders.find(function (x) { return x.id === id; }) : null;
+      if (!rem) return;
+
+      if (action === 'toggle') {
+        rem.done = actionEl.checked;
+        if (rem.done) fired[rem.id] = true;       // done items shouldn't fire
+        else delete fired[rem.id];                // un-done → can fire again
+        saveReminders(); render();
+
+      } else if (action === 'edit') {
+        openModal(rem.id);
+
+      } else if (action === 'delete') {
+        // Remove with a graceful fade-out animation.
+        row.style.transition = 'opacity .2s, transform .2s';
+        row.style.opacity = '0'; row.style.transform = 'translateX(12px)';
+        setTimeout(function () {
+          state.reminders = state.reminders.filter(function (x) { return x.id !== id; });
+          delete fired[id];
+          saveReminders(); render();
+        }, 180);
+      }
+    });
+
+    // --- Completed section collapse/expand ---
+    $('#completedHead').addEventListener('click', function () {
+      state.completedOpen = !state.completedOpen;
+      savePrefs(); renderCompleted();
+    });
+
+    // --- Calendar: jump back to the current week ---
+    $('#calTodayBtn').addEventListener('click', function () {
+      calWeekStart = sundayOf(new Date());
+      renderCalendar();
+    });
+
+    // --- Modal open/close ---
+    $('#modalCloseBtn').addEventListener('click', closeModal);
+    $('#cancelBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && overlay.classList.contains('show')) closeModal();
+    });
+
+    // --- Form submit ---
+    $('#remForm').addEventListener('submit', function (e) { e.preventDefault(); saveFromForm(); });
+
+    // --- Delete button inside the modal ---
+    $('#deleteBtn').addEventListener('click', function () {
+      if (!state.editingId) return;
+      state.reminders = state.reminders.filter(function (x) { return x.id !== state.editingId; });
+      delete fired[state.editingId];
+      saveReminders(); closeModal(); render();
+      toast('🗑️', 'Reminder deleted');
+    });
+
+    // --- Clear title error as the user types ---
+    $('#fTitle').addEventListener('input', function () {
+      $('#titleErr').classList.remove('show');
+      $('#fTitle').classList.remove('invalid');
+    });
+
+    // --- Backup: export / import ---
+    $('#exportBtn').addEventListener('click', exportBackup);
+    $('#importBtn').addEventListener('click', importBackup);
+    $('#importFile').addEventListener('change', function (e) {
+      var file = e.target.files && e.target.files[0];
+      e.target.value = '';            // reset so the same file can be re-picked
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var clean = parseBackupFile(String(reader.result));
+          offerMerge(clean);
+        } catch (err) {
+          toast('⚠️', 'Import failed', err.message);
+        }
+      };
+      reader.onerror = function () { toast('⚠️', 'Import failed', 'Could not read that file.'); };
+      reader.readAsText(file);
+    });
+
+    // --- Re-arm fired flags + refresh view when returning to the tab ---
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) { rearmFired(); tick(); render(); }
+    });
+  }
+
+  /**
+   * On load (or tab return), mark past reminders as already-fired so users
+   * aren't spammed with notifications for things that happened while away —
+   * except the very-latest minute, which still deserves a nudge.
+   */
+  function rearmFired() {
+    state.reminders.forEach(function (r) {
+      if (r.done) { fired[r.id] = true; return; }
+      var t = remDate(r).getTime();
+      if (t < Date.now() - 60000) fired[r.id] = true; // older than 1 min → skip
+      else delete fired[r.id];
+    });
+  }
+
+  /* ------------------------------ boot ------------------------------- */
+
+  /**
+   * Register the service worker (required for PWA install + offline use).
+   * Service workers only exist on http(s) origins — when the file is opened
+   * via file:// we simply skip registration; the app works either way.
+   */
+  function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    var local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if (location.protocol !== 'https:' && !local) return;
+    navigator.serviceWorker.register('./sw.js').catch(function (err) {
+      console.warn('Service worker registration failed:', err);
+    });
+  }
+
+  function init() {
+    load();
+
+    // Respect the OS color-scheme preference on first visit.
+    if (!localStorage.getItem(PREFS_KEY) &&
+        window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      state.theme = 'dark';
+    }
+
+    setTheme(state.theme);
+    setMode(state.mode);
+    wireEvents();
+    rearmFired();
+    render();
+
+    // Header date line, e.g. "Fri, Sep 12"
+    $('#todayLine').textContent = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+    setupNotifications();
+    registerServiceWorker();
+    setInterval(tick, 1000);   // 1s: countdowns stay fresh, trigger check is cheap
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "name": "Remindly — Study & Personal Reminders",
+  "short_name": "Remindly",
+  "description": "A clean, modern reminder & scheduling app. Study and Personal modes, notifications, and offline support — everything stored locally.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f6fb",
+  "theme_color": "#2563eb",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
