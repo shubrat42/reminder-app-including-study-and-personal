@@ -46,6 +46,20 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
+<!-- Apply the saved (or OS-preferred) theme BEFORE first paint, so dark-mode
+     users don't get a white flash. The main script's setTheme() takes over
+     after load; both read the same prefs key so they always agree. -->
+<script>
+(function () {
+  try {
+    var prefs = JSON.parse(localStorage.getItem('remindly.prefs.v1') || '{}');
+    var theme = prefs.theme ||
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = theme;
+  } catch (e) { /* default light theme applies */ }
+})();
+</script>
+
 <style>
 /* ===========================================================================
    1. DESIGN TOKENS
@@ -74,10 +88,13 @@
   --t-med:  .32s cubic-bezier(.32,.72,.28,1);
 
   /* "Liquid glass" tokens — frosted translucent surfaces. Cards, the header
-     and toasts all read these, so the material is defined in one place. */
+     and toasts all read these, so the material is defined in one place.
+     --glass-sheen is a subtle top-to-bottom highlight that gives panes their
+     specular "glass edge"; themes override it (none needed if empty). */
   --glass-bg:  rgba(255,255,255,.66);
   --glass-brd: rgba(255,255,255,.70);
   --glass-blur: saturate(180%) blur(22px);
+  --glass-sheen: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,0) 42%);
 }
 
 /* ---------- Light theme (default) ---------- */
@@ -107,27 +124,33 @@
 
 /* ---------- Dark theme ---------- */
 [data-theme="dark"] {
-  --bg:          #050507;
+  --bg:          #0a0b10;
   --bg-wash:
-    radial-gradient(1100px 520px at 85% -10%, rgba(255,159,10,.09), transparent 60%),
-    radial-gradient(900px 520px at -12% 12%,  rgba(10,132,255,.12), transparent 55%),
-    linear-gradient(180deg, #0c0e14 0%, #06070a 55%, #050507 100%);
-  --surface:     #232530;
-  --surface-2:   rgba(120,122,132,.16);
-  --text:        #f2f2f7;
-  --text-soft:   #98989f;
-  --border:      rgba(255,255,255,.10);
+    /* Glows are STRONGER in dark: frosted panes need color behind them to
+       read as glass — over a near-black page they'd look like flat gray. */
+    radial-gradient(1100px 520px at 85% -10%, rgba(255,159,10,.17), transparent 60%),
+    radial-gradient(900px 560px at -12% 10%,  rgba(10,132,255,.24), transparent 58%),
+    radial-gradient(1200px 720px at 50% 115%, rgba(94,92,230,.16), transparent 62%),
+    linear-gradient(180deg, #14161f 0%, #0b0d13 50%, #0a0b10 100%);
+  --surface:     #2a2d3a;
+  --surface-2:   rgba(120,122,132,.18);
+  --text:        #f5f5f7;
+  --text-soft:   #a1a1aa;
+  --border:      rgba(255,255,255,.13);
   --success:     #30d158;
   --danger:      #ff453a;
   --danger-soft: rgba(255,69,58,.14);
   --overlay:     rgba(0,0,0,.55);
-  --shadow-sm: 0 1px 2px rgba(0,0,0,.5), 0 4px 14px rgba(0,0,0,.45);
-  --shadow-md: 0 10px 34px rgba(0,0,0,.55);
-  --shadow-lg: 0 24px 70px rgba(0,0,0,.7);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.35), 0 4px 16px rgba(0,0,0,.35);
+  --shadow-md: 0 10px 34px rgba(0,0,0,.5);
+  --shadow-lg: 0 24px 70px rgba(0,0,0,.65);
 
-  /* Glass recolors for dark: darker pane, hairline light border */
-  --glass-bg:  rgba(24,26,34,.60);
-  --glass-brd: rgba(255,255,255,.10);
+  /* Glass recolors for dark: lifted pane (not pitch black), brighter
+     hairline, gentler saturation, thin light sheen along the top edge. */
+  --glass-bg:  rgba(30,32,42,.58);
+  --glass-brd: rgba(255,255,255,.14);
+  --glass-blur: saturate(150%) blur(24px);
+  --glass-sheen: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,0) 38%);
 }
 
 /* Dark-mode Personal accent: iOS dark-mode orange */
@@ -187,12 +210,29 @@ body::before {
 /* ===========================================================================
    3. HEADER
    ========================================================================= */
+/* Header sheen is weaker than cards' — iOS bars stay understated */
 .app-header {
   position: sticky; top: 0; z-index: 50;
-  background: var(--glass-bg);
+  background: var(--glass-sheen), var(--glass-bg);
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--glass-brd);
   box-shadow: 0 1px 24px rgba(17,24,39,.06);
+}
+[data-theme="dark"] .app-header { box-shadow: none; }
+
+/* Dark theme: lift every translucent white "well" (hover states, inputs,
+   the toggle track, completed-count chip) so they don't turn muddy. */
+[data-theme="dark"] .icon-btn:hover,
+[data-theme="dark"] .search-wrap input,
+[data-theme="dark"] .mode-toggle {
+  background: rgba(255,255,255,.08);
+}
+[data-theme="dark"] .field input,
+[data-theme="dark"] .field select,
+[data-theme="dark"] .field textarea { background: rgba(255,255,255,.07); }
+[data-theme="dark"] .completed-head .count { background: rgba(255,255,255,.10); }
+[data-theme="dark"] .brand-badge {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 2px 10px rgba(0,0,0,.4);
 }
 .header-inner {
   max-width: var(--max-w); margin: 0 auto; padding: 12px 20px;
@@ -278,9 +318,10 @@ body::before {
   .calendar-panel { order: 2; }   /* list first on mobile */
 }
 
-/* Generic card — the "liquid glass" pane: translucent, blurred, hairline */
+/* Generic card — the "liquid glass" pane: translucent, blurred, hairline,
+   with the sheen gradient layered on top for the specular glass edge. */
 .card {
-  background: var(--glass-bg);
+  background: var(--glass-sheen), var(--glass-bg);
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-brd);
   border-radius: 24px;
@@ -316,6 +357,10 @@ body::before {
   background: var(--accent); color: #fff; cursor: pointer;
   font: 600 14px var(--font); box-shadow: 0 2px 12px var(--accent-soft);
   transition: background var(--t-fast), transform var(--t-fast), box-shadow var(--t-med);
+}
+/* Dark orange buttons are light — keep label dark for contrast, iOS-style */
+[data-theme="dark"] [data-mode="personal"] .add-btn {
+  color: #3f2800; text-shadow: none;
 }
 .add-btn:hover { background: var(--accent-strong); transform: translateY(-1px); box-shadow: 0 6px 16px var(--accent-soft); }
 .add-btn:active { transform: translateY(0); }
@@ -370,6 +415,7 @@ body::before {
 .tag-pri { border: 1px solid var(--border); color: var(--text-soft); }
 .tag-pri.high   { color: var(--danger);  border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 .tag-pri.medium { color: #d97706; border-color: color-mix(in srgb, #d97706 35%, transparent); }
+[data-theme="dark"] .tag-pri.medium { color: #ffb340; border-color: rgba(255,179,64,.4); }
 .countdown { font-weight: 600; color: var(--accent-strong); transition: color var(--t-med); }
 .reminder-item.overdue .countdown { color: var(--danger); }
 
@@ -438,7 +484,7 @@ body::before {
 
 .modal {
   width: 100%; max-width: 460px; max-height: 92vh; overflow-y: auto;
-  background: var(--glass-bg);
+  background: var(--glass-sheen), var(--glass-bg);
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-brd);
   border-radius: 28px 28px 0 0;                    /* iOS sheet: big top corners */
@@ -492,7 +538,7 @@ body::before {
   display: flex; flex-direction: column; gap: 8px; width: min(340px, calc(100vw - 32px));
 }
 .toast {
-  background: var(--glass-bg);
+  background: var(--glass-sheen), var(--glass-bg);
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-brd); border-left: 4px solid var(--accent);
   border-radius: 18px; box-shadow: var(--shadow-md);
@@ -563,8 +609,11 @@ body::before {
 </style>
 </head>
 
-<!-- data-mode drives the accent color; data-theme drives light/dark -->
-<body data-mode="study" data-theme="light">
+<!-- data-mode (on body) drives the accent color. The theme attribute is
+     NOT set here on purpose: setTheme() writes data-theme to <html>, and a
+     hardcoded attribute on <body> would override the dark theme's variables
+     (its light-theme block matches body directly and beats inheritance). -->
+<body data-mode="study">
 
 <!-- =======================================================================
      HEADER — brand, mode toggle, theme switch
@@ -1170,7 +1219,7 @@ body::before {
     $('#themeBtn').textContent = theme === 'dark' ? '☀️' : '🌙';
     // Keep the browser UI (address bar, status bar) tinted to match the theme.
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0c0e14' : '#f4f6fc');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0b0d13' : '#f4f6fc');
     savePrefs();
   }
 

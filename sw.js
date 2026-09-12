@@ -11,7 +11,7 @@
      are fine to store). Offline → falls back to the system font stack.
    =========================================================================== */
 
-const VERSION   = 'remindly-v3'; // v3: iOS Liquid Glass redesign + new icon palette
+const VERSION   = 'remindly-v4'; // v4: dark-mode glass fix + theme flash fix
 const SHELL     = `${VERSION}-shell`;
 const RUNTIME   = `${VERSION}-runtime`;
 
