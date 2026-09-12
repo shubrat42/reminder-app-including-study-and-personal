@@ -16,7 +16,7 @@
                     theme by setTheme() in the script below
   ============================================================================
 -->
-<meta name="theme-color" content="#2563eb">
+<meta name="theme-color" content="#f4f6fc">
 <link rel="manifest" href="manifest.json">
 <!-- iOS home-screen support (Safari reads these instead of the manifest) -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -55,68 +55,95 @@
    ========================================================================= */
 :root {
   /* Typography */
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
 
-  /* Radii & shadows (soft, modern) */
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 16px;
+  /* Radii — iOS continuous-corner feel */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
   --r-pill: 999px;
-  --shadow-sm: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
-  --shadow-md: 0 8px 24px rgba(16,24,40,.12);
-  --shadow-lg: 0 16px 48px rgba(16,24,40,.22);
+  --shadow-sm: 0 1px 2px rgba(17,24,39,.05), 0 4px 14px rgba(17,24,39,.06);
+  --shadow-md: 0 10px 34px rgba(17,24,39,.14);
+  --shadow-lg: 0 24px 70px rgba(17,24,39,.28);
 
   /* Layout */
   --max-w: 1060px;
 
-  /* Motion */
+  /* Motion — springy, like iOS view transitions */
   --t-fast: .16s ease;
-  --t-med:  .28s cubic-bezier(.4,0,.2,1);
+  --t-med:  .32s cubic-bezier(.32,.72,.28,1);
+
+  /* "Liquid glass" tokens — frosted translucent surfaces. Cards, the header
+     and toasts all read these, so the material is defined in one place. */
+  --glass-bg:  rgba(255,255,255,.66);
+  --glass-brd: rgba(255,255,255,.70);
+  --glass-blur: saturate(180%) blur(22px);
 }
 
 /* ---------- Light theme (default) ---------- */
 :root, [data-theme="light"] {
-  --bg:          #f4f6fb;   /* page background */
-  --surface:     #ffffff;   /* cards / panels */
-  --surface-2:   #eef1f7;   /* subtle wells (search, week grid) */
-  --text:        #111827;   /* primary text */
-  --text-soft:   #6b7280;   /* secondary text */
-  --border:      #e5e9f0;
-  --success:     #16a34a;
-  --danger:      #dc2626;
-  --danger-soft: rgba(220,38,38,.09);
-  --overlay:     rgba(15,23,42,.45);
+  --bg:          #eef1f8;   /* base color behind the wash */
+  /* Airy sky wash with subtle blue/orange glow blobs (painted by body::before) */
+  --bg-wash:
+    radial-gradient(1100px 520px at 85% -10%, rgba(255,149,0,.16), transparent 60%),
+    radial-gradient(900px 520px at -12% 12%,  rgba(0,122,255,.13), transparent 55%),
+    linear-gradient(180deg, #f4f6fc 0%, #edf1f9 55%, #eef2f8 100%);
+  --surface:     #ffffff;   /* solid surface: modal, toasts, toggle thumb */
+  --surface-2:   rgba(120,122,132,.10);  /* wells (search, inputs, hover) */
+  --text:        #1c1c1e;   /* iOS label */
+  --text-soft:   #7c7f87;   /* iOS secondaryLabel */
+  --border:      rgba(60,60,67,.10);   /* iOS separator */
+  --success:     #34c759;   /* iOS green */
+  --danger:      #ff3b30;   /* iOS red */
+  --danger-soft: rgba(255,59,48,.10);
+  --overlay:     rgba(20,24,34,.40);
 
-  /* Mode accents — overridden below when mode = personal */
-  --accent:        #2563eb;              /* blue  → Study */
-  --accent-strong: #1d4ed8;
-  --accent-soft:   rgba(37,99,235,.10);  /* tag / pill fills */
-  --accent-softer: rgba(37,99,235,.06);
+  /* Mode accents — Study = iOS system blue (overridden below for Personal) */
+  --accent:        #007aff;
+  --accent-strong: #0069d9;
+  --accent-soft:   rgba(0,122,255,.12);
+  --accent-softer: rgba(0,122,255,.07);
 }
 
 /* ---------- Dark theme ---------- */
 [data-theme="dark"] {
-  --bg:          #0d1117;
-  --surface:     #161b22;
-  --surface-2:   #1d2330;
-  --text:        #e6edf3;
-  --text-soft:   #8b949e;
-  --border:      #2a313d;
-  --success:     #4ade80;
-  --danger:      #f87171;
-  --danger-soft: rgba(248,113,113,.12);
-  --overlay:     rgba(0,0,0,.6);
-  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
-  --shadow-md: 0 8px 24px rgba(0,0,0,.5);
-  --shadow-lg: 0 16px 48px rgba(0,0,0,.65);
+  --bg:          #050507;
+  --bg-wash:
+    radial-gradient(1100px 520px at 85% -10%, rgba(255,159,10,.09), transparent 60%),
+    radial-gradient(900px 520px at -12% 12%,  rgba(10,132,255,.12), transparent 55%),
+    linear-gradient(180deg, #0c0e14 0%, #06070a 55%, #050507 100%);
+  --surface:     #232530;
+  --surface-2:   rgba(120,122,132,.16);
+  --text:        #f2f2f7;
+  --text-soft:   #98989f;
+  --border:      rgba(255,255,255,.10);
+  --success:     #30d158;
+  --danger:      #ff453a;
+  --danger-soft: rgba(255,69,58,.14);
+  --overlay:     rgba(0,0,0,.55);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.5), 0 4px 14px rgba(0,0,0,.45);
+  --shadow-md: 0 10px 34px rgba(0,0,0,.55);
+  --shadow-lg: 0 24px 70px rgba(0,0,0,.7);
+
+  /* Glass recolors for dark: darker pane, hairline light border */
+  --glass-bg:  rgba(24,26,34,.60);
+  --glass-brd: rgba(255,255,255,.10);
 }
 
-/* ---------- Personal mode accent (warm orange) ---------- */
+/* Dark-mode Personal accent: iOS dark-mode orange */
+[data-theme="dark"] [data-mode="personal"] {
+  --accent:        #ff9f0a;
+  --accent-strong: #ffb340;
+  --accent-soft:   rgba(255,159,10,.20);
+  --accent-softer: rgba(255,159,10,.10);
+}
+
+/* ---------- Personal mode accent (iOS orange) ---------- */
 [data-mode="personal"] {
-  --accent:        #ea580c;
-  --accent-strong: #c2410c;
-  --accent-soft:   rgba(234,88,12,.12);
-  --accent-softer: rgba(234,88,12,.07);
+  --accent:        #ff9500;
+  --accent-strong: #e68600;
+  --accent-soft:   rgba(255,149,0,.14);
+  --accent-softer: rgba(255,149,0,.08);
 }
 
 /* ===========================================================================
@@ -136,6 +163,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* The gradient glow wash lives on a FIXED layer behind everything, so the
+   frosted-glass panels have something colorful to blur (fixed = it doesn't
+   scroll, which sells the "glass over content" illusion). */
+body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: -1;
+  background: var(--bg-wash);
+}
+
 /* Visible focus ring for keyboard users (a11y) */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
@@ -153,9 +189,10 @@ body {
    ========================================================================= */
 .app-header {
   position: sticky; top: 0; z-index: 50;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--border);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-brd);
+  box-shadow: 0 1px 24px rgba(17,24,39,.06);
 }
 .header-inner {
   max-width: var(--max-w); margin: 0 auto; padding: 12px 20px;
@@ -163,18 +200,25 @@ body {
 }
 .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
 .brand-badge {
-  width: 34px; height: 34px; border-radius: 10px; flex: none;
+  width: 38px; height: 38px; border-radius: 12px; flex: none;
   display: flex; align-items: center; justify-content: center;
-  background: var(--accent); color: #fff; font-size: 17px;
-  box-shadow: 0 2px 8px var(--accent-soft);
+  /* accent → orange gradient, echoing the app icon */
+  background: linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--accent) 45%, #ff9500));
+  color: #fff; font-size: 18px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 2px 10px var(--accent-soft);
   transition: background var(--t-med);
 }
-.brand h1 { font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+.brand h1 { font-size: 22px; font-weight: 800; letter-spacing: -.03em; }
 .brand h1 span { color: var(--accent); transition: color var(--t-med); }
 .brand small { display: block; font-size: 11px; font-weight: 500; color: var(--text-soft); letter-spacing: .02em; }
 
-/* Theme toggle */
-.theme-btn { font-size: 16px; }
+/* Theme toggle — round glass chip like an iOS toolbar button */
+.theme-btn {
+  font-size: 16px;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--glass-brd);
+}
 
 /* ===========================================================================
    4. MODE TOGGLE (pill segmented control)
@@ -182,9 +226,10 @@ body {
 .mode-toggle {
   position: relative;   /* IMPORTANT: anchors the absolutely-positioned thumb —
                            without this the thumb sizes/slides to the header! */
-  display: inline-flex; padding: 4px;
+  display: inline-flex; padding: 3px;
   background: var(--surface-2); border-radius: var(--r-pill);
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-brd);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
 }
 .mode-btn {
   position: relative; z-index: 1;           /* keep labels above the thumb */
@@ -192,13 +237,15 @@ body {
   display: inline-flex; align-items: center; justify-content: center;
   border: none; background: transparent; cursor: pointer;
   padding: 7px 18px; border-radius: var(--r-pill);
-  font: 600 13.5px var(--font); color: var(--text-soft); white-space: nowrap;
+  font: 600 14px var(--font); color: var(--text-soft); white-space: nowrap;
   transition: color var(--t-fast);
 }
 /* The sliding white "pill" that sits behind the active label */
+/* Insets (3px) must match the toggle's padding; width math: half the padding
+   box minus half the border = calc(50% - 4px). Keep in sync with padding! */
 .mode-thumb {
-  position: absolute; top: 4px; bottom: 4px; left: 4px;
-  width: calc(50% - 5px);
+  position: absolute; top: 3px; bottom: 3px; left: 3px;
+  width: calc(50% - 4px);
   background: var(--surface); border-radius: var(--r-pill);
   box-shadow: var(--shadow-sm);
   transition: transform var(--t-med), width var(--t-med);
@@ -231,10 +278,13 @@ body {
   .calendar-panel { order: 2; }   /* list first on mobile */
 }
 
-/* Generic card */
+/* Generic card — the "liquid glass" pane: translucent, blurred, hairline */
 .card {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r-lg); box-shadow: var(--shadow-sm);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-brd);
+  border-radius: 24px;
+  box-shadow: var(--shadow-sm);
 }
 
 /* ===========================================================================
@@ -242,9 +292,10 @@ body {
    ========================================================================= */
 .list-panel-head {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 18px 18px 12px;
+  padding: 22px 20px 12px;
 }
-.list-panel-head h2 { font-size: 16px; font-weight: 700; letter-spacing: -.01em; margin-right: auto; }
+/* iOS-style large title */
+.list-panel-head h2 { font-size: 26px; font-weight: 800; letter-spacing: -.035em; margin-right: auto; }
 
 /* Search input */
 .search-wrap { position: relative; flex: 1 1 150px; max-width: 230px; }
@@ -261,9 +312,9 @@ body {
 /* Primary "Add Reminder" button */
 .add-btn {
   display: inline-flex; align-items: center; gap: 7px;
-  padding: 9px 18px; border: none; border-radius: var(--r-pill);
+  padding: 10px 20px; border: none; border-radius: var(--r-pill);
   background: var(--accent); color: #fff; cursor: pointer;
-  font: 600 13.5px var(--font); box-shadow: 0 2px 10px var(--accent-soft);
+  font: 600 14px var(--font); box-shadow: 0 2px 12px var(--accent-soft);
   transition: background var(--t-fast), transform var(--t-fast), box-shadow var(--t-med);
 }
 .add-btn:hover { background: var(--accent-strong); transform: translateY(-1px); box-shadow: 0 6px 16px var(--accent-soft); }
@@ -286,7 +337,7 @@ body {
 .reminder-item.overdue { background: var(--danger-soft); border-radius: var(--r-md); }
 .reminder-item.overdue::before {
   content: ""; position: absolute; left: 0; top: 12px; bottom: 12px;
-  width: 3px; border-radius: 3px; background: var(--danger);
+  width: 4px; border-radius: 4px; background: var(--danger);
 }
 
 /* Hover-revealed row actions */
@@ -294,21 +345,21 @@ body {
 .reminder-item:hover .rem-actions, .reminder-item:focus-within .rem-actions { opacity: 1; }
 @media (hover: none) { .rem-actions { opacity: 1; } } /* always visible on touch devices */
 
-/* Checkbox */
+/* Checkbox — iOS Reminders' hollow circle that fills with the list color */
 .rem-check {
-  appearance: none; width: 20px; height: 20px; flex: none; margin-top: 2px;
-  border: 2px solid var(--border); border-radius: 6px; cursor: pointer;
+  appearance: none; width: 23px; height: 23px; flex: none; margin-top: 1px;
+  border: 2px solid var(--border); border-radius: 50%; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
-  color: #fff; font-size: 12px; transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
+  color: #fff; font-size: 13px; transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
 }
-.rem-check:hover { border-color: var(--accent); }
-.rem-check:checked { background: var(--success); border-color: var(--success); }
+.rem-check:hover { border-color: var(--accent); transform: scale(1.06); }
+.rem-check:checked { background: var(--accent); border-color: var(--accent); }
 .rem-check:checked::after { content: "✓"; font-weight: 800; animation: pop .2s ease; }
 @keyframes pop { 50% { transform: scale(1.4); } }
 
 /* Row text */
 .rem-body { min-width: 0; flex: 1; }
-.rem-title { font-size: 14.5px; font-weight: 600; letter-spacing: -.01em; }
+.rem-title { font-size: 15px; font-weight: 600; letter-spacing: -.015em; }
 .reminder-item.done .rem-title { text-decoration: line-through; color: var(--text-soft); }
 .rem-notes { font-size: 12.5px; color: var(--text-soft); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rem-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 6px; font-size: 12px; color: var(--text-soft); align-items: center; }
@@ -347,7 +398,7 @@ body {
 /* ===========================================================================
    8. WEEK CALENDAR PANEL
    ========================================================================= */
-.cal-panel { padding: 16px; }
+.cal-panel { padding: 18px; }
 .cal-head { display: flex; align-items: center; margin-bottom: 12px; }
 .cal-head h3 { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-soft); }
 .cal-head .icon-btn { margin-left: auto; }
@@ -361,7 +412,7 @@ body {
 }
 .cal-day .num { line-height: 1; }
 .cal-day.dim { opacity: .32; }                 /* days outside this week */
-.cal-day.today { border-color: var(--accent); color: var(--accent-strong); }
+.cal-day.today { border-color: var(--accent); color: var(--accent-strong); background: var(--accent-softer); }
 .cal-day .dots { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; }
 .cal-day .dots i {
   width: 5px; height: 5px; border-radius: 50%; background: var(--accent); display: block;
@@ -387,15 +438,17 @@ body {
 
 .modal {
   width: 100%; max-width: 460px; max-height: 92vh; overflow-y: auto;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r-lg) var(--r-lg) 0 0;                    /* bottom-sheet look on mobile */
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-brd);
+  border-radius: 28px 28px 0 0;                    /* iOS sheet: big top corners */
   box-shadow: var(--shadow-lg);
   padding: 22px; transform: translateY(24px); transition: transform var(--t-med);
 }
 .modal-overlay.show .modal { transform: none; }
 @media (min-width: 640px) {
   .modal-overlay { align-items: center; }
-  .modal { border-radius: var(--r-lg); transform: translateY(12px) scale(.98); }
+  .modal { border-radius: 28px; transform: translateY(12px) scale(.98); }
 }
 
 .modal-head { display: flex; align-items: center; margin-bottom: 16px; }
@@ -406,9 +459,9 @@ body {
 .field { margin-bottom: 14px; }
 .field label { display: block; font-size: 12px; font-weight: 600; color: var(--text-soft); margin-bottom: 5px; letter-spacing: .02em; }
 .field input, .field select, .field textarea {
-  width: 100%; padding: 10px 12px; font: 500 14px var(--font);
+  width: 100%; padding: 11px 12px; font: 500 14px var(--font);
   color: var(--text); background: var(--surface-2);
-  border: 1px solid var(--border); border-radius: var(--r-md);
+  border: 1px solid transparent; border-radius: 12px;
   transition: border-color var(--t-fast), box-shadow var(--t-fast);
 }
 .field textarea { resize: vertical; min-height: 64px; }
@@ -439,8 +492,10 @@ body {
   display: flex; flex-direction: column; gap: 8px; width: min(340px, calc(100vw - 32px));
 }
 .toast {
-  background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent);
-  border-radius: var(--r-md); box-shadow: var(--shadow-md);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-brd); border-left: 4px solid var(--accent);
+  border-radius: 18px; box-shadow: var(--shadow-md);
   padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start;
   animation: toast-in .3s cubic-bezier(.4,0,.2,1) both;
 }
@@ -461,14 +516,15 @@ body {
 .backup-row { display: flex; gap: 10px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
 .backup-btn {
   font: 600 12px/1 var(--font);
-  color: var(--text-soft);
-  background: transparent;
-  border: 1px solid var(--border);
+  color: var(--accent);
+  background: var(--accent-softer);
+  border: none;
   border-radius: var(--r-pill);
-  padding: 7px 14px;
+  padding: 8px 15px;
   cursor: pointer;
-  transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+  transition: color var(--t-fast), background var(--t-fast), transform var(--t-fast);
 }
+.backup-btn:hover { background: var(--accent-soft); transform: translateY(-1px); }
 .backup-btn:hover {
   color: var(--accent);
   border-color: var(--accent);
@@ -1114,7 +1170,7 @@ body {
     $('#themeBtn').textContent = theme === 'dark' ? '☀️' : '🌙';
     // Keep the browser UI (address bar, status bar) tinted to match the theme.
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0d1117' : '#2563eb');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0c0e14' : '#f4f6fc');
     savePrefs();
   }
 

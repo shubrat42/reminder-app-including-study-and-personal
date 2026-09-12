@@ -80,14 +80,14 @@ function scene(px, py) {
 }
 
 /* ---------------- gradient background ----------------
- * Blue (Study) → orange (Personal), diagonal like a sunrise. */
+ * iOS system blue (Study) → iOS orange (Personal), diagonal like a sunrise. */
 function gradient(x, y) {
   const t = clamp((x + y) / (2 * SIZE), 0, 1);
   const lerp = (a, b, u) => a + (b - a) * u;
   return [
-    Math.round(lerp(0x25, 0xea, t)), // R: #2563eb → #ea580c
-    Math.round(lerp(0x63, 0x58, t)), // G
-    Math.round(lerp(0xeb, 0x0c, t)), // B
+    Math.round(lerp(0x00, 0xff, t)), // R: #007aff → #ff9500
+    Math.round(lerp(0x7a, 0x95, t)), // G
+    Math.round(lerp(0xff, 0x00, t)), // B
   ];
 }
 
