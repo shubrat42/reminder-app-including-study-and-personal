@@ -64,8 +64,10 @@ function scene(px, py) {
 
   acc(Math.abs(dCircle(px, py, cx, cy, R - ringW / 2)) - ringW / 2);          // ring
 
+  // Capsule distance: inside when distSeg < radius w (sign matters — an
+  // inverted sign here would flood the whole union white).
   const hand = (deg, len, w) =>                                                // hands
-    acc(-distSeg(px, py, cx, cy + 18, cx + len * Math.cos(rad(deg)), cy + 18 + len * Math.sin(rad(deg))) + w);
+    acc(distSeg(px, py, cx, cy + 18, cx + len * Math.cos(rad(deg)), cy + 18 + len * Math.sin(rad(deg))) - w);
   hand(-55, 150, 26);   // hour hand → upper right
   hand(-155, 205, 26);  // minute hand → upper left
 
