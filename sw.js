@@ -11,7 +11,7 @@
      are fine to store). Offline → falls back to the system font stack.
    =========================================================================== */
 
-const VERSION   = 'remindly-v6'; // v6: Switchr rebrand + new mode-reactive logo/icons (key prefix kept for data compat)
+const VERSION   = 'remindly-v7'; // v7: polish — greeting header, glance strip, theme-btn focus fix, fixed purple festivals
 const SHELL     = `${VERSION}-shell`;
 const RUNTIME   = `${VERSION}-runtime`;
 

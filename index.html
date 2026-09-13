@@ -117,9 +117,11 @@
   --danger:      #ff3b30;   /* iOS red */
   --danger-soft: rgba(255,59,48,.10);
   --overlay:     rgba(20,24,34,.40);
-  /* Indian-festival dot color (saffron — nods to the tiranga + marigolds) */
-  --festival:    #ff9500;
-  --festival-strong: #e07800;
+  /* Indian-festival dot color — FIXED purple, never shifts with theme/mode.
+     (It must never equal --accent: in Personal mode the accent is orange,
+     and a saffron festival dot was indistinguishable from it.) */
+  --festival:    #a855f7;
+  --festival-strong: #9333ea;
 
   /* Mode accents — Study = iOS system blue (overridden below for Personal) */
   --accent:        #007aff;
@@ -143,9 +145,9 @@
   --text:        #f5f5f7;
   --text-soft:   #a1a1aa;
   --border:      rgba(255,255,255,.13);
-  /* Saffron pops brighter against the dark wash */
-  --festival:    #ffb340;
-  --festival-strong: #ff9f0a;
+  /* Festival purple pops brighter against the dark wash */
+  --festival:    #c084fc;
+  --festival-strong: #d8b4fe;
   --success:     #30d158;
   --danger:      #ff453a;
   --danger-soft: rgba(255,69,58,.14);
@@ -263,15 +265,29 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
   width: .17em; height: .17em; border-radius: 50%;
   background: var(--accent); transition: background var(--t-med);
 }
-.brand small { display: block; font-size: 11px; font-weight: 500; color: var(--text-soft); letter-spacing: .02em; }
+/* Wordmark + greeting stack under the logo mark */
+.brand-txt { min-width: 0; }
+.brand small {
+  display: block; font-size: 11px; letter-spacing: .02em;
+  color: var(--text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.brand small .greet { font-weight: 600; color: var(--text); }
+.brand small .d { font-weight: 500; }
 
-/* Theme toggle — round glass chip like an iOS toolbar button */
+/* Theme toggle — round glass chip like an iOS toolbar button.
+   No ring on click/tap (Safari & devtools emulation can keep :focus-visible
+   stuck after a click, which read as a stray blue outline in dark mode).
+   Keyboard users still get a subtle neutral ring via :focus-visible. */
 .theme-btn {
   font-size: 16px;
   width: 36px; height: 36px; border-radius: 50%;
   background: var(--surface-2);
   border: 1px solid var(--glass-brd);
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
+.theme-btn:focus:not(:focus-visible) { outline: none; box-shadow: none; }
+.theme-btn:focus-visible { outline: 1px solid var(--glass-brd); outline-offset: 2px; }
 
 /* ===========================================================================
    4. MODE TOGGLE (pill segmented control)
@@ -458,6 +474,40 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
 .empty-state p { font-size: 13px; max-width: 300px; margin: 0 auto 16px; }
 .empty-state .add-btn { padding: 8px 16px; font-size: 13px; }
 
+/* "This week at a glance" — 7-day strip shown under the empty-state copy
+   so an empty category still shows nearby life (festivals/reminders). */
+.glance { margin: 26px auto 0; max-width: 340px; }
+.glance .g-title {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-soft); margin-bottom: 10px;
+}
+.glance .g-row { display: flex; justify-content: center; gap: 6px; }
+.g-day {
+  flex: 1 1 0; max-width: 46px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 4px 7px; border-radius: 14px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  font: inherit; color: inherit; cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
+}
+.g-day:hover { background: var(--accent-softer); border-color: var(--accent-soft); transform: translateY(-1px); }
+div.g-day { cursor: default; }  /* only button days (with content) act clickable */
+div.g-day:hover { transform: none; }
+.g-day .gd { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-soft); }
+.g-day .gn { font-size: 13px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1; }
+/* Today: accent-tinted, echoing the calendar's "today" treatment */
+.g-day.today { border-color: var(--accent-soft); background: var(--accent-softer); }
+.g-day.today .gn { color: var(--accent); }
+.g-day .dots { display: flex; gap: 2.5px; height: 5px; align-items: center; }
+.g-day .dots i { width: 4.5px; height: 4.5px; border-radius: 50%; background: var(--accent); display: block; }
+.g-day .dots i.overdue { background: var(--danger); }
+.g-day .dots i.done   { background: var(--text-soft); opacity: .5; }
+.g-day .dots i.fest   { background: var(--festival); }
+/* Saffron left tick on days that carry a festival */
+.g-day.has-fest { border-color: color-mix(in srgb, var(--festival) 45%, var(--border)); }
+.g-day.has-fest { border-color: rgba(168,85,247,.45); }
+/* Motivational line when the surrounding week is completely quiet */
+.g-motiv { font-size: 12px; font-style: italic; color: var(--text-soft); margin-top: 14px; }
+
 /* ===========================================================================
    8. CALENDAR PANEL — interactive month view with Indian festivals
    ========================================================================= */
@@ -515,7 +565,7 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
   width: 22px; height: 22px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
 }
-/* Festival days get a saffron ring */
+/* Festival days get a fixed purple ring (mode-independent) */
 .cal-day.festival { border-color: var(--festival); }
 .cal-day.festival .num { color: var(--festival-strong); }
 /* Selected + today can coexist; selection border wins visually via z-order */
@@ -565,8 +615,8 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
 .dp-rem.done { opacity: .55; text-decoration: line-through; }
 .dp-fest { display: flex; gap: 9px; padding: 8px 9px; border-radius: 12px;
   /* Solid fallback first; color-mix (iOS 16.2+/modern browsers) tints it. */
-  background: rgba(255,149,0,.12);
-  border: 1px solid rgba(255,149,0,.30);
+  background: rgba(168,85,247,.12);
+  border: 1px solid rgba(168,85,247,.30);
   background: color-mix(in srgb, var(--festival) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--festival) 30%, transparent); margin-bottom: 6px; }
 .dp-fest .fi { font-size: 15px; line-height: 1.2; }
@@ -576,7 +626,7 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
   padding: 1.5px 7px; border-radius: 999px; margin-left: 6px; vertical-align: 1px;
   background: var(--festival); color: #fff;
 }
-.dp-fest .ft.national { background: #b45309; }
+.dp-fest .ft.national { background: #7e22ce; }
 .dp-fest .fd { font-size: 11.5px; color: var(--text-soft); line-height: 1.45; margin-top: 2px; }
 .dp-empty { font-size: 12px; color: var(--text-soft); padding: 4px 2px 0; }
 
@@ -702,7 +752,9 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
    ========================================================================= */
 @media (max-width: 560px) {
   .header-inner { padding: 10px 14px; gap: 10px; }
-  .brand small { display: none; }
+  /* Greeting stays; only the date part is dropped to save row space */
+  .brand small { display: block; }
+  .brand small .d { display: none; }
   /* Compact header so brand + toggle + theme fit one row on phones */
   .brand-badge { width: 30px; }
   .brand h1 { font-size: 16px; }
@@ -712,6 +764,8 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
   .list-panel-head { padding: 14px 12px 10px; }
   .search-wrap { max-width: none; flex-basis: 100%; order: 3; }  /* search wraps to its own row */
   .reminder-list { padding: 4px 6px 8px; }
+  .glance { margin-top: 20px; max-width: none; }
+  .g-day { max-width: none; padding: 7px 2px 6px; }
   .field-row, .field-row-3 { grid-template-columns: 1fr 1fr; }
   .field-row-3 .field:last-child { grid-column: span 2; }
 }
@@ -743,9 +797,12 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
                 d="M32 0 H44 A20 20 0 0 1 44 40 H32 Z M47 7 A13 13 0 1 0 47 33 A13 13 0 1 0 47 7 Z"/>
         </svg>
       </div>
-      <!-- Wordmark: dotless ı + CSS tittle that tints with the active mode -->
-      <h1>Sw<span class="tittle">ı</span>tchr</h1>
-      <small id="todayLine"></small>
+      <!-- Wordmark: dotless ı + CSS tittle that tints with the active mode.
+           Under it: time-of-day greeting (primary) + today's date (secondary). -->
+      <div class="brand-txt">
+        <h1>Sw<span class="tittle">ı</span>tchr</h1>
+        <small id="todayLine"></small>
+      </div>
     </div>
 
     <!-- Study / Personal segmented pill toggle -->
@@ -813,6 +870,9 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
       <h3 id="emptyTitle">All clear!</h3>
       <p id="emptyText">No reminders here yet.</p>
       <button class="add-btn" id="emptyAddBtn">＋ Add your first reminder</button>
+      <!-- "This week at a glance": 7-day strip with festival/reminder dots
+           (rendered by renderGlance() so the empty view never feels bare). -->
+      <div class="glance" id="glanceStrip" aria-label="This week at a glance"></div>
     </div>
   </section>
 
@@ -967,6 +1027,10 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
   var STORAGE_KEY   = 'remindly.reminders.v1'; // all reminders
   var PREFS_KEY     = 'remindly.prefs.v1';     // theme / mode / collapsed state
 
+  /* Name used in the header greeting ("Good evening, <name>").
+     Change this one constant to personalize. */
+  var USER_NAME = 'Shubrat';
+
   /** @type {Array<Object>} source of truth for every reminder */
   var state = {
     reminders: [],
@@ -1078,6 +1142,8 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
   function saveReminders() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.reminders)); }
     catch (e) { toast('⚠️', 'Storage full', 'Could not save reminders.'); }
+    // Let listeners (glance strip, open day popover) refresh themselves.
+    document.dispatchEvent(new CustomEvent('reminderChanged'));
   }
 
   /** Persist UI prefs. */
@@ -1215,6 +1281,94 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
       ? 'Nothing in ' + state.mode + ' matches "' + state.query + '".'
       : 'Nothing scheduled in ' + state.mode + '. Add one and we\'ll nudge you right on time.';
     $('#emptyAddBtn').hidden = searching; // hide "add" CTA while searching
+
+    renderGlance(searching);
+  }
+
+  /* ------------------- "This week at a glance" strip ------------------ */
+
+  /* ISO string of the day the greeting/glance were last rendered for —
+     lets tick() detect midnight rollover and refresh them. */
+  var glanceDayStr = '';
+
+  /** Header greeting: "Good evening, Shubrat" + smaller date underneath. */
+  function renderGreeting() {
+    var h = new Date().getHours();
+    var part = h < 5 ? 'evening' : h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+    var el = $('#todayLine');
+    if (el) el.innerHTML =
+      '<span class="greet">Good ' + part + ', ' + esc(USER_NAME) + '</span>' +
+      ' <span class="d">· ' +
+      esc(new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })) +
+      '</span>';
+  }
+
+  /* Quiet-lines shown (one per visit, picked at random) when the whole
+     glance window is empty — the space should never feel like a void. */
+  var MOTIVATION = [
+    'A clear plate is a good place to start.',
+    'Nothing planned — the day is all yours.',
+    'Quiet week. Add something worth remembering.',
+    'Smooth sailing — no festivals, no due dates nearby.',
+    'An empty list is a quiet mind.'
+  ];
+
+  /** Render the 7-day strip (today −2 … +4) under the empty-state copy:
+      each day carries the same dots as the calendar — reminders (accent,
+      red = overdue, grey = done) and festivals (fixed purple). Days with
+      anything on them deep-link into the calendar day popover. If the
+      window is completely quiet, show a motivational line instead. */
+  function renderGlance(searching) {
+    var strip = $('#glanceStrip');
+    if (!strip || searching) { if (strip) strip.innerHTML = ''; return; }
+
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var todayISO = toLocalISO(today);
+    var dow = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+    var anyFest = false, anyRem = false, cells = '';
+    for (var off = -2; off <= 4; off++) {
+      var d   = new Date(today); d.setDate(today.getDate() + off);
+      var iso = toLocalISO(d);
+      var rems = state.reminders.filter(function (r) { return r.date === iso; });
+      var fests = festsOn(iso);
+      if (fests.length) anyFest = true;
+      if (rems.length)  anyRem  = true;
+
+      var dots = rems.slice(0, 3).map(function (r) {
+        return '<i class="' + (r.done ? 'done' : (isOverdue(r) ? 'overdue' : '')) + '"></i>';
+      }).join('');
+      if (fests.length) dots += '<i class="fest"></i>';
+
+      var t = iso === todayISO ? ' today' : '';
+      var f = fests.length ? ' has-fest' : '';
+      var interactive = (rems.length || fests.length);
+      cells += interactive
+        ? '<button type="button" class="g-day' + t + f + '" data-gdate="' + iso + '">' +
+            '<span class="gd">' + dow[d.getDay()] + '</span>' +
+            '<span class="gn">' + d.getDate() + '</span>' +
+            '<span class="dots">' + dots + '</span>' +
+          '</button>'
+        : '<div class="g-day' + t + f + '" aria-hidden="true">' +
+            '<span class="gd">' + dow[d.getDay()] + '</span>' +
+            '<span class="gn">' + d.getDate() + '</span>' +
+            '<span class="dots">' + dots + '</span>' +
+          '</div>';
+    }
+
+    // Everything nearby quiet? Rotate a short line instead of an empty strip.
+    var tail = (anyFest || anyRem)
+      ? '<div class="g-title">This week at a glance</div><div class="g-row">' + cells + '</div>'
+      : '<div class="g-motiv">' + MOTIVATION[Math.floor(Math.random() * MOTIVATION.length)] + '</div>';
+
+    strip.innerHTML = tail;
+  }
+
+  /** Glance day → open the month calendar on that month and pop the day. */
+  function jumpToDay(iso) {
+    setView('calendar');
+    calGoTo(new Date(iso + 'T00:00:00'));
+    showDayPop(iso, document.querySelector('.cal-day[data-date="' + iso + '"]'));
   }
 
   /* ----------------------------- stats ------------------------------- */
@@ -1271,6 +1425,7 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
            and rings would only show up on the next unrelated re-render —
            e.g. after toggling modes — never on first view. */
         renderCalendar();
+        renderGlance(state.query.length > 0);   // glance strip may be visible
         var sel = document.querySelector('.cal-day.selected');
         if (sel && calSelected) showDayPop(calSelected, sel);   // refresh open popover
       })
@@ -1602,6 +1757,15 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
 
     if (changed) saveReminders();
 
+    // Midnight (or first tick after): refresh greeting + empty-state strip,
+    // since "today" just moved and the glance window slides with it.
+    var dstr = toLocalISO(new Date());
+    if (dstr !== glanceDayStr) {
+      glanceDayStr = dstr;
+      renderGreeting();
+      renderGlance(state.query.length > 0);
+    }
+
     // Cheap per-second refresh of countdown labels only (no full re-render).
     document.querySelectorAll('[data-countdown]').forEach(function (el) {
       var r = state.reminders.find(function (x) { return x.id === el.dataset.countdown; });
@@ -1808,6 +1972,24 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
     $('#addBtn').addEventListener('click', function () { openModal(null); });
     $('#emptyAddBtn').addEventListener('click', function () { openModal(null); });
 
+    // "This week at a glance" strip: days with content deep-link into the
+    // calendar day popover. Delegated — the strip re-renders often.
+    var strip = $('#glanceStrip');
+    if (strip) strip.addEventListener('click', function (e) {
+      var btn = e.target.closest('.g-day[data-gdate]');
+      if (btn) jumpToDay(btn.getAttribute('data-gdate'));
+    });
+
+    // If the day popover is open, keep it truthful after any list change
+    // (toggle/delete from the popover re-renders, so refresh it in place).
+    document.addEventListener('reminderChanged', function () {
+      var pop = $('#dayPop');
+      if (pop && !pop.hidden && calSelected) {
+        var anchor = document.querySelector('.cal-day[data-date="' + calSelected + '"]');
+        if (anchor) showDayPop(calSelected, anchor);
+      }
+    });
+
     // --- Search (filters within active category) ---
     $('#searchInput').addEventListener('input', function (e) {
       state.query = e.target.value.trim();
@@ -1987,8 +2169,8 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
     rearmFired();
     render();
 
-    // Header date line, e.g. "Fri, Sep 12"
-    $('#todayLine').textContent = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    glanceDayStr = toLocalISO(new Date());
+    renderGreeting();
 
     setupNotifications();
     registerServiceWorker();
