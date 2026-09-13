@@ -1,5 +1,5 @@
 /* ===========================================================================
-   Remindly service worker — offline-first app shell
+   Switchr service worker — offline-first app shell
    ----------------------------------------------------------------------------
    Strategy:
    - Precache the app shell (HTML, manifest, icons) on install.
@@ -11,7 +11,7 @@
      are fine to store). Offline → falls back to the system font stack.
    =========================================================================== */
 
-const VERSION   = 'remindly-v5'; // v5: interactive month calendar + Indian festivals
+const VERSION   = 'remindly-v6'; // v6: Switchr rebrand + new mode-reactive logo/icons (key prefix kept for data compat)
 const SHELL     = `${VERSION}-shell`;
 const RUNTIME   = `${VERSION}-runtime`;
 

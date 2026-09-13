@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-/* Dependency-free PNG icon generator for Remindly.
- * Draws a rounded-square blue→orange gradient tile with a white alarm-clock
- * glyph (ring, hands, bell bumps, feet) at 1024px, then box-downsamples to
- * 512 and 192 for smooth antialiased edges. Uses only Node built-ins
- * (zlib for the PNG IDAT). */
+/* Dependency-free PNG icon generator for Switchr.
+ * Draws the Switchr mark — a horizontal switch pill: blue rounded-left half,
+ * orange rounded-right half with a dark knob circle knocked out — centered on
+ * a near-black rounded-square tile, plus the brand dot above the "i" (blue in
+ * the default variant). Renders at 1024px with 4×4 supersampling, then
+ * box-downsamples to 512 and 192 for crisp antialiased edges.
+ * Node built-ins only (zlib for the PNG IDAT). */
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -15,8 +17,6 @@ const OUT_DIR = path.join(__dirname, '..', 'icons');
 
 /* ---------------- tiny vector helpers ---------------- */
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const rad = d => (d * Math.PI) / 180;
-
 /** Signed distance to a rounded rectangle (corner radius r). */
 function sdRoundRect(px, py, cx, cy, hx, hy, r) {
   const dx = Math.abs(px - cx) - (hx - r);
@@ -24,95 +24,79 @@ function sdRoundRect(px, py, cx, cy, hx, hy, r) {
   const ax = Math.max(dx, 0), ay = Math.max(dy, 0);
   return Math.hypot(ax, ay) + Math.min(Math.max(dx, dy), 0) - r;
 }
-/** Distance from point p to segment a-b. */
+/** Distance from point p to segment a-b (unused now, kept for glyphs). */
 function distSeg(px, py, ax, ay, bx, by) {
   const abx = bx - ax, aby = by - ay;
   const t = clamp(((px - ax) * abx + (py - ay) * aby) / (abx * abx + aby * aby), 0, 1);
   return Math.hypot(px - (ax + abx * t), py - (ay + aby * t));
 }
-/** Unsigned distance to a circle edge (0 at the rim, + outside, - inside). */
+/** Unsigned distance to a circle edge. */
 const dCircle = (px, py, cx, cy, r) => Math.hypot(px - cx, py - cy) - r;
 
-/* ---------------- glyph coverage field ----------------
- * S(x,y) ∈ [0,1] — 1 = fully inside the white glyph. Union of primitives,
- * each anti-aliased over a 2px feather (fine at SS=4 with box filtering). */
-function coverage(px, py) {
-  const feather = 2;
-  const inside = (d) => clamp((feather - d) / (2 * feather), 0, 1);
-  let s = 0;
-  const acc = (d) => { s = Math.max(s, inside(d)); };
-
-  // Rounded-square tile (acts as the glyph's background — see shade() below)
-  acc(sdRoundRect(px, py, SIZE / 2, SIZE / 2, SIZE / 2, SIZE / 2, 224));
-
-  return s;
-}
-
-/* Full scene: returns {bg, glyph} coverages.
- * bg: rounded tile; glyph: clock artwork drawn on top. */
+/* ---------------- scene: coverages + region id ----------------
+ * Returns per-sample coverage for tile, blue region, orange region, and the
+ * knob hole. The knob is a true knockout: where hole coverage is high, the
+ * pixel shows the dark tile instead of orange. */
 function scene(px, py) {
   const feather = 2;
   const cov = d => clamp((feather - d) / (2 * feather), 0, 1);
 
-  // 1) Rounded tile
-  const bg = cov(sdRoundRect(px, py, SIZE / 2, SIZE / 2, SIZE / 2, SIZE / 2, 224));
+  // 1) Dark rounded-square tile
+  const tile = cov(sdRoundRect(px, py, SIZE / 2, SIZE / 2, SIZE / 2, SIZE / 2, 224));
 
-  // 2) Clock glyph (white)
-  const cx = 512, cy = 515, R = 300, ringW = 64;
-  let g = 0;
-  const acc = d => { g = Math.max(g, cov(d)); };
+  // 2) Switch pill, centered
+  const pillCx = SIZE / 2, pillCy = SIZE * 0.46;
+  const pillHx = SIZE * 0.27, pillHy = SIZE * 0.135, pillR = pillHy;
 
-  acc(Math.abs(dCircle(px, py, cx, cy, R - ringW / 2)) - ringW / 2);          // ring
+  // Left (blue) half: rounded on the left only — full-height rounded rect
+  // shifted left, then clipped to x ≤ center.
+  const blueFull = cov(sdRoundRect(px, py, pillCx - pillHx + pillR, pillCy, pillHx, pillHy, pillR));
+  const blue = Math.min(blueFull, clamp((pillCx - px) / (2 * feather) + 0.5, 0, 1));
 
-  // Capsule distance: inside when distSeg < radius w (sign matters — an
-  // inverted sign here would flood the whole union white).
-  const hand = (deg, len, w) =>                                                // hands
-    acc(distSeg(px, py, cx, cy + 18, cx + len * Math.cos(rad(deg)), cy + 18 + len * Math.sin(rad(deg))) - w);
-  hand(-55, 150, 26);   // hour hand → upper right
-  hand(-155, 205, 26);  // minute hand → upper left
+  // Right (orange) half: mirrored, clipped to x ≥ center.
+  const orangeFull = cov(sdRoundRect(px, py, pillCx + pillHx - pillR, pillCy, pillHx, pillHy, pillR));
+  const orange = Math.min(orangeFull, clamp((px - pillCx) / (2 * feather) + 0.5, 0, 1));
 
-  acc(dCircle(px, py, cx, cy + 18, 34));                                       // hub
+  // Knob hole: dark circle inside the orange half.
+  const holeR = pillHy * 0.72;
+  const hole = cov(dCircle(px, py, pillCx + pillHx - pillR, pillCy, holeR));
 
-  acc(dCircle(px, py, cx - 258, cy - 292, 56));                                // left bell bump
-  acc(dCircle(px, py, cx + 258, cy - 292, 56));                                // right bell bump
-  acc(dCircle(px, py, cx - 168, cy + R + 6, 42));                              // left foot
-  acc(dCircle(px, py, cx + 168, cy + R + 6, 42));                              // right foot
+  // Brand dot above the "i" (blue) — positioned like the wordmark lockup.
+  const dot = cov(dCircle(px, py, pillCx + SIZE * 0.055, pillCy - SIZE * 0.20, SIZE * 0.032));
 
-  return { bg, glyph: Math.min(g, 1) };
+  return { tile, blue, orange, hole, dot };
 }
 
-/* ---------------- gradient background ----------------
- * iOS system blue (Study) → iOS orange (Personal), diagonal like a sunrise. */
-function gradient(x, y) {
-  const t = clamp((x + y) / (2 * SIZE), 0, 1);
-  const lerp = (a, b, u) => a + (b - a) * u;
-  return [
-    Math.round(lerp(0x00, 0xff, t)), // R: #007aff → #ff9500
-    Math.round(lerp(0x7a, 0x95, t)), // G
-    Math.round(lerp(0xff, 0x00, t)), // B
-  ];
-}
-
-/* ---------------- render master canvas ---------------- */
-const field = new Float32Array(SIZE * SIZE); // 0 = outside, 1..2 = bg, 3 = glyph
+/* ---------------- render master canvas ----------------
+ * field values: 1+t = tile alpha; 11+b = blue over tile; 21+o = orange;
+ * 31+d = dot. Knob hole is resolved while compositing (region under hole
+ * becomes tile-dark). Glyph-over-base packing keeps downsampling correct. */
+const field = new Float32Array(SIZE * SIZE);
 for (let y = 0; y < SIZE; y++) {
   for (let x = 0; x < SIZE; x++) {
-    // 4×4 supersample grid per pixel, averaged
-    let bgAcc = 0, glAcc = 0;
+    let tileA = 0, blueA = 0, orangeA = 0, holeA = 0, dotA = 0;
     for (let sy = 0; sy < SS; sy++) {
       for (let sx = 0; sx < SS; sx++) {
         const px = x + (sx + 0.5) / SS;
         const py = y + (sy + 0.5) / SS;
-        const { bg, glyph } = scene(px, py);
-        bgAcc += bg; glAcc += glyph;
+        const s = scene(px, py);
+        tileA += s.tile; blueA += s.blue; orangeA += s.orange; holeA += s.hole; dotA += s.dot;
       }
     }
-    const bg = bgAcc / (SS * SS), gl = glAcc / (SS * SS);
-    field[y * SIZE + x] = gl > 0.5 ? 3 + gl : 1 + bg; // glyph wins over tile
+    const n = SS * SS;
+    tileA /= n; blueA /= n; orangeA /= n; holeA /= n; dotA /= n;
+
+    // Composite orange over blue over tile; hole punches orange back to tile.
+    let v;
+    if (dotA > 0.5)                 v = 31 + dotA;                       // blue dot (topmost)
+    else if (orangeA > 0.5)         v = holeA > 0.5 ? 1 + tileA : 21 + Math.max(orangeA, blueA);
+    else if (blueA > 0.5)           v = 11 + blueA;
+    else                            v = 1 + tileA;
+    field[y * SIZE + x] = v;
   }
 }
 
-/* ---------------- downsample + encode PNG ---------------- */
+/* ---------------- PNG encoding (unchanged plumbing) ---------------- */
 function crc32(buf) {
   let c, table = crc32.table;
   if (!table) {
@@ -142,7 +126,6 @@ function encodePNG(size) {
   for (let y = 0; y < size; y++) {
     raw[o++] = 0; // filter: none
     for (let x = 0; x < size; x++) {
-      // Box-filter average over the source square for this pixel
       let r = 0, g = 0, b = 0, a = 0;
       const x0 = Math.floor(x * scale), y0 = Math.floor(y * scale);
       const x1 = Math.min(SIZE, Math.ceil((x + 1) * scale));
@@ -150,9 +133,11 @@ function encodePNG(size) {
       for (let sy = y0; sy < y1; sy++) {
         for (let sx = x0; sx < x1; sx++) {
           const v = field[sy * SIZE + sx];
-          const isGlyph = v >= 3;
-          const covA = isGlyph ? v - 3 : v - 1;      // coverage 0..1
-          const rgb = isGlyph ? [255, 255, 255] : gradient(sx, sy);
+          let rgb, covA;
+          if (v >= 31)      { rgb = [30, 143, 255]; covA = v - 31; }   // brand blue dot
+          else if (v >= 21) { rgb = [255, 160, 19];  covA = v - 21; }  // orange
+          else if (v >= 11) { rgb = [30, 143, 255];  covA = v - 11; }  // blue
+          else              { rgb = [17, 18, 20];    covA = v - 1; }   // dark tile
           r += rgb[0] * covA; g += rgb[1] * covA; b += rgb[2] * covA; a += covA;
         }
       }

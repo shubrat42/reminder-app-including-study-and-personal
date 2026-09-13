@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# Remindly — Start local server (double-click me)
+# Switchr — Start local server (double-click me)
 # ------------------------------------------------------------
 # Serves the app at:  http://localhost:8000
 # Keep the window open while using the app.
@@ -12,7 +12,7 @@
 cd "$(dirname "$0")"
 
 echo ""
-echo "✅  Remindly is running at:  http://localhost:8000"
+echo "✅  Switchr is running at:  http://localhost:8000"
 echo "    Keep this window open — closing it stops the server."
 echo ""
 
