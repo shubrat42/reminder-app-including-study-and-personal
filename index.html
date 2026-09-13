@@ -37,7 +37,8 @@
     UI (CSS custom property --accent), and pre-fills new reminders.
   - Reminders: title, notes, date, time, category, priority, repeat.
   - Notifications: real browser Notification on trigger, with toast fallback.
-  - Extras: stats line, search, week-view calendar, light/dark theme.
+  - Extras: stats line, search, interactive month calendar with Indian
+    festivals & holidays (festivals.json, offline), light/dark theme.
   ============================================================================
 -->
 
@@ -114,6 +115,9 @@
   --danger:      #ff3b30;   /* iOS red */
   --danger-soft: rgba(255,59,48,.10);
   --overlay:     rgba(20,24,34,.40);
+  /* Indian-festival dot color (saffron — nods to the tiranga + marigolds) */
+  --festival:    #ff9500;
+  --festival-strong: #e07800;
 
   /* Mode accents — Study = iOS system blue (overridden below for Personal) */
   --accent:        #007aff;
@@ -137,6 +141,9 @@
   --text:        #f5f5f7;
   --text-soft:   #a1a1aa;
   --border:      rgba(255,255,255,.13);
+  /* Saffron pops brighter against the dark wash */
+  --festival:    #ffb340;
+  --festival-strong: #ff9f0a;
   --success:     #30d158;
   --danger:      #ff453a;
   --danger-soft: rgba(255,69,58,.14);
@@ -315,7 +322,11 @@ body::before {
 }
 @media (max-width: 880px) {
   .main { grid-template-columns: 1fr; }
-  .calendar-panel { order: 2; }   /* list first on mobile */
+  /* One panel at a time — switched by the List/Calendar pill tabs above */
+  .view-switch { display: flex; justify-content: center; padding: 0 20px 14px; }
+  body[data-view="calendar"] .list-panel { display: none; }
+  body[data-view="calendar"] .view-switch .view-tab:not(.on) { /* stays tappable */ }
+  body:not([data-view="calendar"]) .calendar-panel { display: none; }
 }
 
 /* Generic card — the "liquid glass" pane: translucent, blurred, hairline,
@@ -442,34 +453,126 @@ body::before {
 .empty-state .add-btn { padding: 8px 16px; font-size: 13px; }
 
 /* ===========================================================================
-   8. WEEK CALENDAR PANEL
+   8. CALENDAR PANEL — interactive month view with Indian festivals
    ========================================================================= */
-.cal-panel { padding: 18px; }
+.cal-panel { padding: 18px; position: relative; }   /* relative → popover anchor */
 .cal-head { display: flex; align-items: center; margin-bottom: 12px; }
 .cal-head h3 { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-soft); }
-.cal-head .icon-btn { margin-left: auto; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+
+/* List / Calendar mini pill tabs (mobile only — desktop shows both panels) */
+.view-switch { display: none; }
+.view-tabs {
+  display: flex; gap: 4px; padding: 3px; border-radius: 999px;
+  background: var(--surface-2); width: max-content;
+}
+.view-tab {
+  border: 0; background: transparent; cursor: pointer;
+  font: 600 12px/1 inherit; font-family: inherit; color: var(--text-soft);
+  padding: 6px 13px; border-radius: 999px;
+  transition: color var(--t-fast), background var(--t-fast);
+}
+.view-tab.on { background: var(--glass-bg); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.10); }
+
+/* Month navigation row: ‹ month-year › + 'today' button */
+.cal-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.cal-nav h4 {
+  font-size: 15px; font-weight: 700; color: var(--text); min-width: 118px;
+  text-align: center; margin: 0; font-variant-numeric: tabular-nums;
+}
+.cal-nav .spacer { flex: 1; }
+.icon-btn.sm { width: 28px; height: 28px; font-size: 13px; border-radius: 50%; }
+.cal-today-btn {
+  border: 0; cursor: pointer; font-family: inherit;
+  font-size: 11.5px; font-weight: 700; color: var(--accent-strong);
+  background: var(--accent-softer); padding: 5px 10px; border-radius: 999px;
+  transition: background var(--t-fast), transform .1s;
+}
+.cal-today-btn:active { transform: scale(.95); }
+
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
 .cal-dow { text-align: center; font-size: 10.5px; font-weight: 700; color: var(--text-soft); letter-spacing: .05em; padding: 4px 0; }
 .cal-day {
-  aspect-ratio: 1; min-height: 42px; border-radius: var(--r-md);
+  aspect-ratio: 1; min-height: 38px; border-radius: 12px;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
-  padding: 5px 2px; gap: 3px; border: 1px solid transparent; position: relative;
-  font-size: 12.5px; font-weight: 600;
+  padding: 5px 2px 3px; gap: 2px; border: 1px solid transparent; position: relative;
+  font-size: 12.5px; font-weight: 600; color: var(--text);
+  cursor: pointer; background: transparent; font-family: inherit;
+  transition: background var(--t-fast), transform .1s;
 }
-.cal-day .num { line-height: 1; }
-.cal-day.dim { opacity: .32; }                 /* days outside this week */
-.cal-day.today { border-color: var(--accent); color: var(--accent-strong); background: var(--accent-softer); }
-.cal-day .dots { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; }
+.cal-day:hover { background: var(--surface-2); }
+.cal-day:active { transform: scale(.92); }
+.cal-day.dim { opacity: .3; cursor: pointer; }       /* leading/trailing filler days */
+.cal-day.selected { border-color: var(--accent); background: var(--accent-softer); }
+/* Today = filled accent circle behind the number (iOS style) */
+.cal-day.today .num {
+  background: var(--accent); color: #fff;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+/* Festival days get a saffron ring */
+.cal-day.festival { border-color: var(--festival); }
+.cal-day.festival .num { color: var(--festival-strong); }
+/* Selected + today can coexist; selection border wins visually via z-order */
+.cal-day.selected.today { border-color: var(--accent); }
+.cal-day .dots { display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; max-width: 100%; }
 .cal-day .dots i {
   width: 5px; height: 5px; border-radius: 50%; background: var(--accent); display: block;
 }
 .cal-day .dots i.done { background: var(--text-soft); opacity: .5; }
 .cal-day .dots i.overdue { background: var(--danger); }
-.cal-legend { display: flex; gap: 14px; margin-top: 12px; font-size: 11px; color: var(--text-soft); flex-wrap: wrap; }
+.cal-day .dots i.fest { background: var(--festival); }
+.cal-legend { display: flex; gap: 12px; margin-top: 12px; font-size: 11px; color: var(--text-soft); flex-wrap: wrap; }
 .cal-legend i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
 .cal-legend .l1 i { background: var(--accent); }
 .cal-legend .l2 i { background: var(--danger); }
 .cal-legend .l3 i { background: var(--text-soft); opacity: .6; }
+.cal-legend .l4 i { background: var(--festival); }
+
+/* ------------------------ day-detail popover ------------------------ */
+.day-pop {
+  position: absolute; z-index: 60; width: min(300px, calc(100vw - 48px));
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-brd); border-radius: 18px;
+  box-shadow: var(--shadow-md); padding: 14px;
+  animation: popIn .18s var(--t-med);
+}
+@keyframes popIn { from { opacity: 0; transform: translateY(6px) scale(.97); } }
+.day-pop-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.day-pop-head .d { font-size: 15px; font-weight: 800; color: var(--text); }
+.day-pop-head .w { font-size: 12px; font-weight: 600; color: var(--text-soft); }
+.day-pop-close {
+  margin-left: auto; border: 0; background: var(--surface-2); color: var(--text-soft);
+  width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-size: 12px; line-height: 1;
+}
+.day-pop-sec { margin-top: 10px; }
+.day-pop-sec h5 {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-soft); margin: 0 0 6px;
+}
+.dp-rem {
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 10px;
+  background: var(--surface-2); margin-bottom: 5px; font-size: 12.5px; color: var(--text);
+}
+.dp-rem .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dp-rem .tm { margin-left: auto; font-size: 11px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+.dp-rem.done { opacity: .55; text-decoration: line-through; }
+.dp-fest { display: flex; gap: 9px; padding: 8px 9px; border-radius: 12px;
+  /* Solid fallback first; color-mix (iOS 16.2+/modern browsers) tints it. */
+  background: rgba(255,149,0,.12);
+  border: 1px solid rgba(255,149,0,.30);
+  background: color-mix(in srgb, var(--festival) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--festival) 30%, transparent); margin-bottom: 6px; }
+.dp-fest .fi { font-size: 15px; line-height: 1.2; }
+.dp-fest .fn { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.dp-fest .ft {
+  display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  padding: 1.5px 7px; border-radius: 999px; margin-left: 6px; vertical-align: 1px;
+  background: var(--festival); color: #fff;
+}
+.dp-fest .ft.national { background: #b45309; }
+.dp-fest .fd { font-size: 11.5px; color: var(--text-soft); line-height: 1.45; margin-top: 2px; }
+.dp-empty { font-size: 12px; color: var(--text-soft); padding: 4px 2px 0; }
 
 /* ===========================================================================
    9. MODAL (add / edit reminder)
@@ -643,6 +746,15 @@ body::before {
   </div>
 </header>
 
+<!-- Mobile-only List/Calendar switcher (desktop shows both panels side by
+     side, so this bar is hidden there; JS toggles body[data-view]). -->
+<div class="view-switch">
+  <div class="view-tabs" role="tablist" aria-label="Switch view">
+    <button class="view-tab on" role="tab" aria-selected="true" data-view="list">List</button>
+    <button class="view-tab" role="tab" aria-selected="false" data-view="calendar">Calendar</button>
+  </div>
+</div>
+
 <!-- =======================================================================
      MAIN — list panel + week calendar panel
      ======================================================================= -->
@@ -686,18 +798,31 @@ body::before {
     </div>
   </section>
 
-  <!-- --------------------------- WEEK VIEW ---------------------------- -->
-  <aside class="card cal-panel calendar-panel" aria-label="Week view">
+  <!-- --------------------------- MONTH VIEW ---------------------------- -->
+  <aside class="card cal-panel calendar-panel" aria-label="Month calendar">
     <div class="cal-head">
-      <h3>This week</h3>
-      <button class="icon-btn" id="calTodayBtn" title="Jump to current week" aria-label="Jump to current week">⟲</button>
+      <h3>Calendar</h3>
     </div>
+
+    <!-- Month navigation: ‹ Month Year › + jump-to-today -->
+    <div class="cal-nav">
+      <button class="icon-btn sm" id="calPrevBtn" title="Previous month" aria-label="Previous month">‹</button>
+      <h4 id="calMonthLabel">—</h4>
+      <button class="icon-btn sm" id="calNextBtn" title="Next month" aria-label="Next month">›</button>
+      <span class="spacer"></span>
+      <button class="cal-today-btn" id="calTodayBtn">Today</button>
+    </div>
+
     <div class="cal-grid" id="calGrid"><!-- rendered by JS --></div>
     <div class="cal-legend">
-      <span class="l1"><i></i>Upcoming</span>
+      <span class="l1"><i></i>Reminder</span>
+      <span class="l4"><i></i>Festival</span>
       <span class="l2"><i></i>Overdue</span>
-      <span class="l3"><i></i>Completed</span>
+      <span class="l3"><i></i>Done</span>
     </div>
+
+    <!-- Day-detail popover (opens when a day is clicked; rendered by JS) -->
+    <div class="day-pop" id="dayPop" hidden></div>
   </aside>
 </main>
 
@@ -828,7 +953,8 @@ body::before {
     theme: 'light',           // 'light' | 'dark'
     completedOpen: false,     // is the Completed section expanded?
     query: '',                // search text (within active category)
-    editingId: null           // reminder being edited (null = adding)
+    editingId: null,          // reminder being edited (null = adding)
+    view: 'list'              // mobile main view: 'list' | 'calendar'
   };
 
   // Track which reminders have already fired so notifications trigger once.
@@ -898,6 +1024,19 @@ body::before {
 
   /* ---------------------------- storage ------------------------------ */
 
+  /** Mobile view switch: 'list' | 'calendar' (desktop shows both panels). */
+  function setView(v) {
+    state.view = (v === 'calendar') ? 'calendar' : 'list';
+    document.body.dataset.view = state.view;
+    document.querySelectorAll('.view-tab').forEach(function (t) {
+      var on = t.dataset.view === state.view;
+      t.classList.toggle('on', on);
+      t.setAttribute('aria-selected', String(on));
+    });
+    savePrefs();
+    if (state.view === 'calendar') renderCalendar();   // fresh dots + layout
+  }
+
   /** Load reminders + prefs from localStorage (fail-soft). */
   function load() {
     try {
@@ -910,6 +1049,7 @@ body::before {
       if (prefs.theme) state.theme = prefs.theme;
       if (prefs.mode)  state.mode  = prefs.mode;
       if (typeof prefs.completedOpen === 'boolean') state.completedOpen = prefs.completedOpen;
+      if (prefs.view === 'calendar' || prefs.view === 'list') state.view = prefs.view;
     } catch (e) { /* defaults already set */ }
   }
 
@@ -923,7 +1063,8 @@ body::before {
   function savePrefs() {
     try {
       localStorage.setItem(PREFS_KEY, JSON.stringify({
-        theme: state.theme, mode: state.mode, completedOpen: state.completedOpen
+        theme: state.theme, mode: state.mode, completedOpen: state.completedOpen,
+        view: state.view
       }));
     } catch (e) { /* non-critical */ }
   }
@@ -1067,21 +1208,80 @@ body::before {
     $('#statsLine').innerHTML = parts.length ? parts.join(' · ') : 'You\'re all caught up ✨';
   }
 
+/* ------------------------- festivals (offline) ----------------------- */
+
+  /* Bundled Indian festivals & holidays (festivals.json, fetched once and
+     cached in-memory + localStorage). Fully offline — no external APIs.
+     localStorage copy makes it instant + resilient if the SW is cold. */
+  var FEST_CACHE_KEY = 'remindly.festivals.v1';
+  var festivalsByDate = null;   // { 'YYYY-MM-DD': [{name, type, desc}] }
+
+  function loadFestivals() {
+    // 1) Instant paint from localStorage copy, if present.
+    try {
+      var cached = localStorage.getItem(FEST_CACHE_KEY);
+      if (cached) { festivalsByDate = JSON.parse(cached); }
+    } catch (e) { festivalsByDate = null; }
+
+    // 2) Then refresh from the bundled file (keeps data current across updates).
+    if (location.protocol === 'file:') {
+      // fetch(file://) is blocked by browsers; without the localStorage copy
+      // the calendar still works — just without festival dots.
+      if (festivalsByDate) return;
+      festivalsByDate = {};
+      return;
+      }
+    fetch('festivals.json')
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (data) {
+        var byDate = {};
+        Object.keys(data.years || {}).forEach(function (y) {
+          (data.years[y] || []).forEach(function (f) {
+            (byDate[f.d] = byDate[f.d] || []).push({
+              name: f.name, type: f.type, desc: f.desc
+            });
+          });
+        });
+        festivalsByDate = byDate;
+        try { localStorage.setItem(FEST_CACHE_KEY, JSON.stringify(byDate)); } catch (e) {}
+      })
+      .catch(function () {
+        if (!festivalsByDate) festivalsByDate = {};   // fail-soft: no dots
+      });
+  }
+
+  /** Festivals on an ISO date, or []. */
+  function festsOn(iso) { return (festivalsByDate && festivalsByDate[iso]) || []; }
+
   /* ---------------------------- calendar ----------------------------- */
 
-  var calWeekStart = null; // Date (Sunday) of the week being viewed
+  var calView     = null; // { y, m } month being viewed (m = 0-11)
+  var calSelected = null; // ISO date shown in the day popover, or null
 
-  /** Shift week start to the Sunday of the given date's week. */
+  /** Sunday of the given date's week (grid rows start on Sunday). */
   function sundayOf(d) {
     var s = new Date(d); s.setHours(0, 0, 0, 0);
     s.setDate(s.getDate() - s.getDay());
     return s;
   }
 
+  /** Jump the calendar to the month containing date d (popover closed). */
+  function calGoTo(d) {
+    calView = { y: d.getFullYear(), m: d.getMonth() };
+    calSelected = null;
+    renderCalendar();
+  }
+
+  /** Render the 6-row month grid with reminder + festival dots. */
   function renderCalendar() {
-    if (!calWeekStart) calWeekStart = sundayOf(new Date());
-    var grid = $('#calGrid');
-    var dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    if (!calView) calView = { y: new Date().getFullYear(), m: new Date().getMonth() };
+    var grid  = $('#calGrid');
+    var label = $('#calMonthLabel');
+    var todayISO = toLocalISO(new Date());
+
+    // "September 2026"
+    label.textContent =
+      new Date(calView.y, calView.m, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
     // Group reminders by local date string for quick lookup.
     var byDate = {};
@@ -1089,27 +1289,112 @@ body::before {
       (byDate[r.date] = byDate[r.date] || []).push(r);
     });
 
+    // 42 cells = 6 full weeks; leading cells are the tail of the previous month.
+    var start = sundayOf(new Date(calView.y, calView.m, 1));
+    var dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
     var html = dows.map(function (d) { return '<div class="cal-dow">' + d + '</div>'; }).join('');
-    var todayISO = toLocalISO(new Date());
 
-    for (var i = 0; i < 7; i++) {
-      var day = new Date(calWeekStart);
-      day.setDate(calWeekStart.getDate() + i);
-      var iso = toLocalISO(day);
-      var rems = byDate[iso] || [];
+    for (var i = 0; i < 42; i++) {
+      var day = new Date(start);
+      day.setDate(start.getDate() + i);
+      var iso     = toLocalISO(day);
+      var rems    = byDate[iso] || [];
+      var fests   = festsOn(iso);
+      var inMonth = day.getMonth() === calView.m;
 
+      // Up to 4 reminder dots + one saffron dot if a festival falls that day.
       var dots = rems.slice(0, 4).map(function (r) {
         var cls = r.done ? 'done' : (isOverdue(r) ? 'overdue' : '');
         return '<i class="' + cls + '" title="' + esc(r.title) + '"></i>';
       }).join('');
+      if (fests.length) dots += '<i class="fest" title="' + esc(fests[0].name) + '"></i>';
+      if (dots) dots = '<span class="dots">' + dots + '</span>';
 
-      html += '<div class="cal-day' + (iso === todayISO ? ' today' : '') + '">' +
-                '<span class="num">' + day.getDate() + '</span>' +
-                '<span class="dots">' + dots + '</span>' +
-              '</div>';
+      var cls = 'cal-day';
+      if (!inMonth)          cls += ' dim';
+      if (iso === todayISO)  cls += ' today';
+      if (fests.length)      cls += ' festival';
+      if (calSelected === iso) cls += ' selected';
+
+      html += '<button type="button" class="' + cls + '" data-date="' + iso + '" ' +
+                'aria-label="' + iso + (fests.length ? ', ' + esc(fests[0].name) : '') + '">' +
+                '<span class="num">' + day.getDate() + '</span>' + dots +
+              '</button>';
+    }
+    grid.innerHTML = html;
+  }
+
+  /* ------------------------ day-detail popover ------------------------ */
+
+  /** Open the popover for an ISO date: that day's festivals + reminders. */
+  function showDayPop(iso, anchorBtn) {
+    var pop   = $('#dayPop');
+    var d     = new Date(iso + 'T00:00:00');
+    var rems  = state.reminders.filter(function (r) { return r.date === iso; })
+                               .sort(function (a, b) { return a.time < b.time ? -1 : 1; });
+    var fests = festsOn(iso);
+
+    var md      = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    var dowName = d.toLocaleDateString(undefined, { weekday: 'long' });
+    var tag     = iso === toLocalISO(new Date()) ? ' · today' : '';
+
+    var h = '<div class="day-pop-head">' +
+              '<span class="d">' + esc(md) + '</span>' +
+              '<span class="w">' + esc(dowName + ' · ' + d.getFullYear()) + esc(tag) + '</span>' +
+              '<button class="day-pop-close" data-pop="close" aria-label="Close">✕</button>' +
+            '</div>';
+
+    if (fests.length) {
+      h += '<div class="day-pop-sec"><h5>Festival · Holiday</h5>';
+      fests.forEach(function (f) {
+        h += '<div class="dp-fest">' +
+               '<span class="fi">' + (f.type === 'national' ? '🇮🇳' : '🪔') + '</span>' +
+               '<div><span class="fn">' + esc(f.name) + '</span>' +
+               '<span class="ft' + (f.type === 'national' ? ' national' : '') + '">' + f.type + '</span>' +
+               '<div class="fd">' + esc(f.desc) + '</div></div>' +
+             '</div>';
+      });
+      h += '</div>';
     }
 
-    grid.innerHTML = html;
+    if (rems.length) {
+      h += '<div class="day-pop-sec"><h5>Reminders</h5>';
+      rems.forEach(function (r) {
+        h += '<div class="dp-rem' + (r.done ? ' done' : '') + '">' +
+               '<span class="t">' + esc(r.title) + '</span>' +
+               '<span class="tm">' + esc(fmtTime(r.time)) + '</span>' +
+             '</div>';
+      });
+      h += '</div>';
+    }
+
+    if (!fests.length && !rems.length) {
+      h += '<div class="dp-empty">Nothing on this day — clear skies. 🌤</div>';
+    }
+
+    pop.innerHTML = h;
+    pop.hidden = false;
+    calSelected = iso;
+
+    // Position below the clicked cell (flip above if it would overflow),
+    // clamped horizontally to the calendar panel.
+    var panel = pop.offsetParent || document.body;
+    var pr = panel.getBoundingClientRect();
+    var br = anchorBtn.getBoundingClientRect();
+    var ph = pop.offsetHeight || 180;
+    var top = br.bottom - pr.top + 8;
+    if (top + ph > pr.height) top = Math.max(8, br.top - pr.top - ph - 8);
+    pop.style.top  = top + 'px';
+    pop.style.left = Math.max(8, Math.min(br.left - pr.left, pr.width - pop.offsetWidth - 8)) + 'px';
+  }
+
+  /** Hide the popover and clear the selected-day highlight. */
+  function closeDayPop() {
+    $('#dayPop').hidden = true;
+    calSelected = null;
+    document.querySelectorAll('.cal-day.selected').forEach(function (el) {
+      el.classList.remove('selected');
+    });
   }
 
   /* ==========================================================================
@@ -1539,10 +1824,39 @@ body::before {
       savePrefs(); renderCompleted();
     });
 
-    // --- Calendar: jump back to the current week ---
-    $('#calTodayBtn').addEventListener('click', function () {
-      calWeekStart = sundayOf(new Date());
-      renderCalendar();
+    // --- Calendar: month nav / today / day popover / mobile view tabs ---
+    $('#calPrevBtn').addEventListener('click', function () {
+      calView.m--; if (calView.m < 0) { calView.m = 11; calView.y--; }
+      calSelected = null; renderCalendar();
+    });
+    $('#calNextBtn').addEventListener('click', function () {
+      calView.m++; if (calView.m > 11) { calView.m = 0; calView.y++; }
+      calSelected = null; renderCalendar();
+    });
+    $('#calTodayBtn').addEventListener('click', function () { calGoTo(new Date()); });
+
+    // Day click → popover with that day's festivals + reminders.
+    // Clicking the already-selected day closes it (toggle behaviour).
+    $('#calGrid').addEventListener('click', function (e) {
+      var btn = e.target.closest('.cal-day');
+      if (!btn) return;
+      if (calSelected === btn.dataset.date) { closeDayPop(); return; }
+      showDayPop(btn.dataset.date, btn);
+    });
+
+    // Popover close button + click-outside-to-dismiss.
+    $('#dayPop').addEventListener('click', function (e) {
+      if (e.target.closest('[data-pop="close"]')) closeDayPop();
+    });
+    document.addEventListener('click', function (e) {
+      if ($('#dayPop').hidden) return;
+      if (e.target.closest('#dayPop') || e.target.closest('.cal-day')) return;
+      closeDayPop();
+    });
+
+    // Mobile List/Calendar tabs — toggles body[data-view], persists in prefs.
+    document.querySelectorAll('.view-tab').forEach(function (tab) {
+      tab.addEventListener('click', function () { setView(tab.dataset.view); });
     });
 
     // --- Modal open/close ---
@@ -1629,6 +1943,7 @@ body::before {
 
   function init() {
     load();
+    loadFestivals();
 
     // Respect the OS color-scheme preference on first visit.
     if (!localStorage.getItem(PREFS_KEY) &&
@@ -1638,6 +1953,7 @@ body::before {
 
     setTheme(state.theme);
     setMode(state.mode);
+    setView(state.view);
     wireEvents();
     rearmFired();
     render();

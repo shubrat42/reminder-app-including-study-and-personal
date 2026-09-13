@@ -11,7 +11,7 @@
      are fine to store). Offline → falls back to the system font stack.
    =========================================================================== */
 
-const VERSION   = 'remindly-v4'; // v4: dark-mode glass fix + theme flash fix
+const VERSION   = 'remindly-v5'; // v5: interactive month calendar + Indian festivals
 const SHELL     = `${VERSION}-shell`;
 const RUNTIME   = `${VERSION}-runtime`;
 
@@ -20,6 +20,7 @@ const PRECACHE_URLS = [
   './',
   './index.html',
   './manifest.json',
+  './festivals.json',   // offline Indian festival/holiday data
   './icons/icon-192.png',
   './icons/icon-512.png',
 ];
