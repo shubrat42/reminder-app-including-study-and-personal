@@ -323,9 +323,14 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
 .mode-btn.active { color: var(--accent-strong); }
 .mode-btn .dot {
   display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-  margin-right: 6px; background: var(--accent); vertical-align: 1px;
+  margin-right: 6px; vertical-align: 1px;
   transition: background var(--t-med);
 }
+/* Each tab keeps its OWN dot color — the active tab's accent changes with
+   mode, but the inactive tab's dot must stay put (Study = always blue,
+   Personal = always orange) or the labels become ambiguous. */
+.mode-btn[data-mode="study"] .dot    { background: #007aff; }
+.mode-btn[data-mode="personal"] .dot { background: #ff9500; }
 
 /* ===========================================================================
    5. STATS LINE + TOOLBAR (search / add button)

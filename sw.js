@@ -11,7 +11,7 @@
      are fine to store). Offline → falls back to the system font stack.
    =========================================================================== */
 
-const VERSION   = 'remindly-v7'; // v7: polish — greeting header, glance strip, theme-btn focus fix, fixed purple festivals
+const VERSION   = 'remindly-v8'; // v8: mode dots keep their own color (Study dot stays blue in Personal mode)
 const SHELL     = `${VERSION}-shell`;
 const RUNTIME   = `${VERSION}-runtime`;
 
