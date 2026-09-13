@@ -1265,6 +1265,14 @@ body[data-mode="personal"] .brand-badge svg { transform: scaleX(-1); }
         });
         festivalsByDate = byDate;
         try { localStorage.setItem(FEST_CACHE_KEY, JSON.stringify(byDate)); } catch (e) {}
+
+        /* Festivals usually arrive AFTER the first paint (async fetch vs the
+           synchronous render in init). Without this refresh, festival dots
+           and rings would only show up on the next unrelated re-render —
+           e.g. after toggling modes — never on first view. */
+        renderCalendar();
+        var sel = document.querySelector('.cal-day.selected');
+        if (sel && calSelected) showDayPop(calSelected, sel);   // refresh open popover
       })
       .catch(function () {
         if (!festivalsByDate) festivalsByDate = {};   // fail-soft: no dots
