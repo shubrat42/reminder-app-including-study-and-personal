@@ -12,17 +12,49 @@
    =========================================================================== */
 'use strict';
 const { encryptFor, vapidHeader, PUSH_TTL, json, corsPreflight } = require('./_webpush');
+const { Receiver } = require('@upstash/qstash');
+
+// Verifies QStash's Upstash-Signature header — cryptographic proof that the
+// delivery really came from OUR scheduler and the body was not tampered with.
+const receiver = (process.env.QSTASH_CURRENT_SIGNING_KEY && process.env.QSTASH_NEXT_SIGNING_KEY)
+  ? new Receiver({
+      currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY,
+      nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY,
+    })
+  : null;
 
 module.exports = async (req, res) => {
   if (corsPreflight(req, res)) return;
 
-  // QStash calls us server-to-server; require its token via header check is
-  // optional — the payload is harmless (no secrets) and encrypted per-device.
   let body = '';
   await new Promise((resolve) => {
     req.on('data', (c) => { body += c; });
     req.on('end', resolve);
   });
+
+  /* ------------------------- authentication -------------------------
+     Accept the delivery when EITHER check passes:
+     1. QStash signature (primary — the signing keys we configured), or
+     2. the shared secret header we attach when scheduling (fallback,
+        covers deployment-host mismatches in the signed URL).            */
+  let authed = false;
+  const sig = req.headers['upstash-signature'];
+  if (receiver && sig) {
+    try {
+      await receiver.verify({
+        signature: String(sig),
+        body,
+        url: 'https://' + (req.headers['x-forwarded-host'] || req.headers.host) + '/api/send',
+      });
+      authed = true;
+    } catch (e) { /* fall through to secret check */ }
+  }
+  if (!authed &&
+      process.env.APP_SECRET &&
+      req.headers['x-switchr-secret'] === process.env.APP_SECRET) {
+    authed = true;
+  }
+  if (!authed) return json(res, 403, { error: 'unauthorized' });
 
   let msg;
   try { msg = JSON.parse(body); }
@@ -30,13 +62,6 @@ module.exports = async (req, res) => {
 
   const { sub, reminder } = msg || {};
   if (!sub || !sub.endpoint || !reminder) return json(res, 400, { error: 'bad payload' });
-
-  // Only our scheduler (QStash, which forwards the headers we set) may
-  // trigger deliveries — blocks outsiders from spamming push at your sub.
-  if (!process.env.APP_SECRET ||
-      req.headers['x-switchr-secret'] !== process.env.APP_SECRET) {
-    return json(res, 403, { error: 'unauthorized' });
-  }
 
   // Build the Notification payload the service worker will display.
   const payload = JSON.stringify({

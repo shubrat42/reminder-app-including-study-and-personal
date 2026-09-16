@@ -30,7 +30,12 @@
 const { verifySigned, json, corsPreflight } = require('./_webpush');
 const { Client } = require('@upstash/qstash');
 
-const qstash = process.env.QSTASH_TOKEN ? new Client({ token: process.env.QSTASH_TOKEN }) : null;
+// Regional deployments get a dedicated URL (e.g. https://qstash-eu-central-1.upstash.io);
+// fall back to the global endpoint when QSTASH_URL is not set.
+const QSTASH_BASE = (process.env.QSTASH_URL || 'https://qstash.upstash.io').replace(/\/$/, '');
+const qstash = process.env.QSTASH_TOKEN
+  ? new Client({ token: process.env.QSTASH_TOKEN, url: QSTASH_BASE })
+  : null;
 
 /* deviceId → { sub, schedule: Map<messageId → occurrenceId> } */
 const devices = new Map();
@@ -92,7 +97,7 @@ module.exports = async (req, res) => {
   // --- 1b. "disable push": cancel every queued schedule for this device ---
   if (parsed.delete === true) {
     for (const [msgId] of dev.schedule) {
-      fetch('https://qstash.upstash.io/v2/messages/' + msgId, {
+      fetch(QSTASH_BASE + '/v2/messages/' + msgId, {
         method: 'DELETE',
         headers: { Authorization: 'Bearer ' + process.env.QSTASH_TOKEN },
       }).catch(() => {});
@@ -118,7 +123,7 @@ module.exports = async (req, res) => {
   for (const [msgId, sid] of dev.schedule) {
     if (wanted.has(sid)) continue;
     dev.schedule.delete(msgId);
-    fetch('https://qstash.upstash.io/v2/messages/' + msgId, {
+    fetch(QSTASH_BASE + '/v2/messages/' + msgId, {
       method: 'DELETE',
       headers: { Authorization: 'Bearer ' + process.env.QSTASH_TOKEN },
     }).catch(() => {});
