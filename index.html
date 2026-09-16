@@ -747,6 +747,9 @@ div.g-day:hover { transform: none; }
    ========================================================================= */
 .app-footer { text-align: center; padding: 26px 20px 34px; font-size: 12px; color: var(--text-soft); }
 
+/* Backend health line under the backup buttons (ping /api/ping). */
+.push-status { margin-top: 10px; font-size: 11.5px; color: var(--text-soft); }
+
 /* --- Backup row (export / import) ---
    Small, quiet ghost buttons that inherit the active accent. */
 .backup-row { display: flex; gap: 10px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
@@ -936,7 +939,7 @@ div.g-day:hover { transform: none; }
 </main>
 
 <footer class="app-footer">
-  Switchr · everything is stored locally in your browser — no account, no backend.
+  Switchr · reminders are stored locally in your browser. Background push (optional) is relayed by our tiny serverless backend.
 
   <!-- Backup: reminders live only in this browser, so offer a manual
        export (download a .json file) / import (restore from one). -->
@@ -950,7 +953,11 @@ div.g-day:hover { transform: none; }
     <button type="button" class="backup-btn" id="soundBtn" title="Notification sound: loud / low / muted (remembered)">
       🔔 Sound on
     </button>
+    <button type="button" class="backup-btn" id="pushBtn" title="Background notifications: delivered even when Switchr is fully closed">
+      📡 Enable push
+    </button>
   </div>
+  <div class="push-status" id="pushStatus" hidden></div>
 </footer>
 
 <!-- Hidden file picker used by the Import button (kept outside the footer
@@ -1060,6 +1067,9 @@ div.g-day:hover { transform: none; }
 
   var STORAGE_KEY   = 'remindly.reminders.v1'; // all reminders
   var PREFS_KEY     = 'remindly.prefs.v1';     // theme / mode / collapsed state
+  // Public signing key shared with our backend — it only authenticates
+  // schedule-sync requests, so it is safe to ship in the client bundle.
+  var APP_SECRET    = '__APP_SECRET__';
 
   /* Name used in the header greeting ("Good evening, <name>").
      Change this one constant to personalize. */
@@ -1074,7 +1084,8 @@ div.g-day:hover { transform: none; }
     query: '',                // search text (within active category)
     editingId: null,          // reminder being edited (null = adding)
     view: 'list',             // mobile main view: 'list' | 'calendar'
-    soundVol: 1               // alert volume: 1 (loud) | 0.5 (low) | 0 (muted)
+    soundVol: 1,              // alert volume: 1 (loud) | 0.5 (low) | 0 (muted)
+    pushOn: false             // background push enabled (subscription active)
   };
 
   // Track which reminders have already fired so notifications trigger once.
@@ -1171,6 +1182,7 @@ div.g-day:hover { transform: none; }
       if (typeof prefs.completedOpen === 'boolean') state.completedOpen = prefs.completedOpen;
       if (prefs.view === 'calendar' || prefs.view === 'list') state.view = prefs.view;
       if (prefs.soundVol === 1 || prefs.soundVol === 0.5 || prefs.soundVol === 0) state.soundVol = prefs.soundVol;
+      if (typeof prefs.pushOn === 'boolean') state.pushOn = prefs.pushOn;
     } catch (e) { /* defaults already set */ }
   }
 
@@ -1180,6 +1192,167 @@ div.g-day:hover { transform: none; }
     catch (e) { toast('⚠️', 'Storage full', 'Could not save reminders.'); }
     // Let listeners (glance strip, open day popover) refresh themselves.
     document.dispatchEvent(new CustomEvent('reminderChanged'));
+    schedulePushSync();                     // keep QStash schedules in step
+  }
+
+  /* ==========================================================================
+     5b. TRUE PUSH NOTIFICATIONS (backend: /api/*, scheduler: Upstash QStash)
+     ----------------------------------------------------------------------------
+     In-app notifications only work while the app is open. True push works
+     when Switchr is FULLY CLOSED: the browser's push service holds our
+     subscription, QStash fires our /api/send at the exact reminder time,
+     and the service worker displays the notification.
+
+     Enable flow: footer button → Notification permission → push subscribe
+     → POST /api/sync (signed) with the subscription + reminder schedule.
+     After that, every reminder change re-syncs (debounced 2s).
+     ========================================================================== */
+
+  var pushSub = null;            // PushSubscription once enabled
+  var pushSyncTimer = 0;         // debounce handle for re-syncs
+
+  function pushEnabled() { return !!(pushSub && state.pushOn); }
+
+  /** Toggle button label in the footer. */
+  function renderPushBtn() {
+    var b = $('#pushBtn');
+    if (!b) return;
+    var supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    if (!supported) { b.textContent = '🔕 Push unsupported'; b.disabled = true; return; }
+    b.textContent = pushEnabled() ? '📡 Push on' : '📡 Enable push';
+  }
+
+  /** Enable push: permission → subscribe → first sync. */
+  function enablePush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      toast('🚫', 'Push not supported', 'This browser cannot do background push.');
+      return;
+    }
+    Notification.requestPermission().then(function (perm) {
+      if (perm !== 'granted') {
+        toast('🚫', 'Notifications blocked', 'Allow notifications in browser settings to use push.');
+        return;
+      }
+      navigator.serviceWorker.ready.then(function (reg) {
+        // Fetch OUR server's VAPID public key, then subscribe with it.
+        fetch('/api/vapid').then(function (r) { return r.json(); }).then(function (v) {
+          if (!v.publicKey) throw new Error('server not configured');
+          var appServerKey = (function (s) {
+            var raw = atob(s.replace(/-/g, '+').replace(/_/g, '/'));
+            var buf = new Uint8Array(raw.length);
+            for (var i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
+            return buf;
+          })(v.publicKey);
+          return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appServerKey });
+        }).then(function (sub) {
+          pushSub = sub;
+          state.pushOn = true;
+          savePrefs();
+          renderPushBtn();
+          pushSyncNow();
+          toast('📡', 'Background push on', 'Reminders will notify you even when Switchr is closed.');
+        }).catch(function (err) {
+          toast('⚠️', 'Push unavailable', 'Server not configured yet, or subscription failed.');
+          console.warn('push enable failed:', err);
+        });
+      });
+    });
+  }
+
+  /** Disable push: unsubscribe + ask the server to cancel queued schedules. */
+  function disablePush() {
+    state.pushOn = false;
+    savePrefs();
+    renderPushBtn();
+    if (pushSub) {
+      pushSyncNow(true);            // tell server to cancel schedules (best-effort)
+      try { pushSub.unsubscribe(); } catch (e) {}
+      pushSub = null;
+    }
+    toast('🔕', 'Push off', 'Background notifications cancelled.');
+  }
+
+  /** Serialized reminder state for /api/sync. */
+  function pushSyncPayload() {
+    return {
+      sub: pushSub ? { endpoint: pushSub.endpoint, keys: pushSub.toJSON().keys } : null,
+      reminders: state.reminders.map(function (r) {
+        return { id: r.id, title: r.title, notes: r.notes, date: r.date,
+                 time: r.time, repeat: r.repeat, category: r.category };
+      }),
+      completedIds: state.reminders.filter(function (r) { return r.done; }).map(function (r) { return r.id; }),
+    };
+  }
+
+  /** HMAC-sign a payload exactly the way /api/sync verifies it. */
+  function signPayload(ts, bodyStr) {
+    return crypto.subtle.importKey('raw', utf8Bytes(APP_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+    ).then(function (key) {
+      return crypto.subtle.sign('HMAC', key, utf8Bytes(ts + '.' + bodyStr));
+    }).then(function (sig) {
+      return b64url(new Uint8Array(sig));
+    });
+  }
+  function utf8Bytes(s) { return new TextEncoder().encode(s); }
+  function b64url(bytes) {
+    var bin = '';
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  /** Send the current schedule to the backend (signed). */
+  function pushSyncNow(cancelAll) {
+    if (!pushSub && !cancelAll) return;
+    var payload = pushSyncPayload();
+    if (cancelAll) payload.delete = true;
+    var bodyStr = JSON.stringify(payload);
+    var ts = String(Date.now());
+    signPayload(ts, bodyStr).then(function (sig) {
+      return fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Timestamp': ts, 'X-Sign': sig },
+        body: bodyStr,
+      });
+    }).then(function (r) { return r.json(); })
+      .catch(function () { /* offline → next sync covers it */ });
+  }
+
+  /** Debounced re-sync (fires at most 2s after the last change). */
+  function schedulePushSync() {
+    if (!pushEnabled()) return;
+    clearTimeout(pushSyncTimer);
+    pushSyncTimer = setTimeout(pushSyncNow, 2000);
+  }
+
+  /** Restore a saved push subscription after a reload (browser keeps it). */
+  function restorePush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    navigator.serviceWorker.ready.then(function (reg) {
+      return reg.pushManager.getSubscription();
+    }).then(function (sub) {
+      if (sub && state.pushOn) {
+        pushSub = sub;
+        renderPushBtn();
+        pushSyncNow();          // re-announce schedules after a cold start
+      }
+    }).catch(function () {});
+  }
+
+  /** Show whether the push backend is configured (footer status line). */
+  function checkBackend() {
+    var el = $('#pushStatus');
+    if (!el) return;
+    var secure = location.protocol === 'https:' ||
+                 location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if (!secure || !('serviceWorker' in navigator)) return;   // no backend locally
+    fetch('/api/ping').then(function (r) { return r.json(); }).then(function (h) {
+      el.hidden = false;
+      var missing = ['vapid', 'secret', 'qstash'].filter(function (k) { return !h[k]; });
+      el.textContent = missing.length
+        ? '🟡 Push backend not fully configured (missing: ' + missing.join(', ') + ')'
+        : '🟢 Push backend ready — enable push to be notified even when the app is closed';
+    }).catch(function () {});
   }
 
   /** Persist UI prefs. */
@@ -1187,7 +1360,7 @@ div.g-day:hover { transform: none; }
     try {
       localStorage.setItem(PREFS_KEY, JSON.stringify({
         theme: state.theme, mode: state.mode, completedOpen: state.completedOpen,
-        view: state.view, soundVol: state.soundVol
+        view: state.view, soundVol: state.soundVol, pushOn: state.pushOn
       }));
     } catch (e) { /* non-critical */ }
   }
@@ -2186,6 +2359,14 @@ div.g-day:hover { transform: none; }
     document.addEventListener('pointerdown', unlockAudio, { once: true });
 
     // Footer sound toggle: loud → low → muted → loud … (persisted in prefs).
+    // --- Push notifications toggle (true background push via backend) ---
+    var pushBtn = $('#pushBtn');
+    if (pushBtn) {
+      pushBtn.addEventListener('click', function () {
+        if (pushEnabled()) disablePush(); else enablePush();
+      });
+    }
+
     var soundBtn = $('#soundBtn');
     if (soundBtn) {
       soundBtn.addEventListener('click', function () {
@@ -2379,9 +2560,12 @@ div.g-day:hover { transform: none; }
     renderGreeting();
     initAlert();      // synthesize + preload the alert sound
     renderSoundBtn();
+    renderPushBtn();  // reflect saved push preference in the footer
 
     setupNotifications();
     registerServiceWorker();
+    restorePush();    // re-use the browser's saved push subscription if any
+    checkBackend();   // show backend health line in the footer
     setInterval(tick, 1000);   // 1s: countdowns stay fresh, trigger check is cheap
   }
 

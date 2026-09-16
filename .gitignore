@@ -3,3 +3,18 @@
 
 # Logs
 *.log
+
+# SECRETS — never commit. VAPID + signing keys live here locally and go
+# into Vercel env vars instead. If this file is ever lost, regenerate:
+#   node -e "const c=require('crypto'),e=c.createECDH('prime256v1');e.generateKeys();\
+#     console.log('VAPID_PUBLIC='+e.getPublicKey().toString('base64url'));\
+#     console.log('VAPID_PRIVATE='+e.getPrivateKey().toString('base64url'));\
+#     console.log('APP_SECRET='+c.randomBytes(32).toString('base64url'))"
+.keys/
+
+# Local env files
+.env
+.env.*
+
+# Node
+node_modules/

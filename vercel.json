@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "api/**": {
+      "runtime": "vercel-node@20",
+      "memory": 1024
+    }
+  }
+}

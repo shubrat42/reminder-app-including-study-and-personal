@@ -11,7 +11,7 @@
      are fine to store). Offline → falls back to the system font stack.
    =========================================================================== */
 
-const VERSION   = 'remindly-v9'; // v9: loud two-tone alert, background catch-up, sound volume toggle
+const VERSION   = 'remindly-v10'; // v10: true background push (push + notificationclick handlers)
 const SHELL     = `${VERSION}-shell`;
 const RUNTIME   = `${VERSION}-runtime`;
 
@@ -98,4 +98,41 @@ self.addEventListener('fetch', (event) => {
 // controller gets postMessage({ type: 'SKIP_WAITING' }) after an updatecheck.
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
+/* ===========================================================================
+   PUSH — true background notifications (work with the app fully closed).
+   The payload arrives encrypted (aes128gcm, decrypted by the browser before
+   this handler runs) and carries the ready-to-show Notification options.
+   =========================================================================== */
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { /* show generic */ }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || '⏰ Switchr reminder', {
+      body: data.body || '',
+      tag: data.tag || 'switchr',            // dedupes re-fires of the same reminder
+      renotify: data.renotify || false,      // re-alert even if tag already shown
+      requireInteraction: data.requireInteraction || false,
+      icon: data.icon || '/icons/icon-192.png',
+      badge: data.badge || '/icons/icon-192.png',
+      data: { url: data.data && data.data.url || '/' },
+    })
+  );
+});
+
+/* Clicking the notification opens/focuses the app. */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Focus an existing window if one is open, else open a new one.
+      for (const client of clientList) {
+        if ('focus' in client) return client.focus();
+      }
+      return self.clients.openWindow(url);
+    })
+  );
 });

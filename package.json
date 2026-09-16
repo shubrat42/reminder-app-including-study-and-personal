@@ -1,0 +1,9 @@
+{
+  "name": "switchr",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Switchr — Study/Personal reminder PWA with true background push notifications",
+  "dependencies": {
+    "@upstash/qstash": "^2.7.20"
+  }
+}
