@@ -44,3 +44,15 @@ if (!/\.field-row, \.field-row-3 \{ grid-template-columns: 1fr 1fr; \}/.test(mq)
   console.error('field-row rule lost from mobile media query'); process.exit(1);
 }
 console.log('mobile media query intact (.field-row restored alongside glance rules)');
+
+// 7. Alert sound: loud two-tone WAV, preloaded, explicit volume, WebAudio fallback.
+if (!/buildAlertWav|initAlert|playAlert/.test(html)) { console.error('alert sound functions missing'); process.exit(1); }
+if (!/alertAudio\.volume = state\.soundVol;[\s\S]{0,40}alertAudio\.play\(\)/.test(html) &&
+    !/alertAudio\.volume = state\.soundVol;\s*\/\/ explicit[\s\S]{0,60}\.play\(\)/.test(html)) {
+  console.error('volume not set explicitly before play()'); process.exit(1);
+}
+if (!/alertAudio\.preload = 'auto'/.test(html)) { console.error('alert not preloaded'); process.exit(1); }
+if (!/catchUpMissed/.test(html) || !/visibilitychange/.test(html)) { console.error('background catch-up missing'); process.exit(1); }
+if (!/soundBtn/.test(html) || !/soundVol/.test(html)) { console.error('sound toggle missing'); process.exit(1); }
+if (/playChime\(\);\s*$/m.test(html.replace(/function playAlert[\s\S]*?\n  \}/, '')) === false) { /* playChime still referenced */ }
+console.log('alert sound: preloaded WAV, explicit volume, catch-up on visible, volume toggle persisted');

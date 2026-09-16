@@ -921,6 +921,9 @@ div.g-day:hover { transform: none; }
     <button type="button" class="backup-btn" id="importBtn" title="Restore reminders from a previously exported JSON file">
       ⬆︎ Import backup
     </button>
+    <button type="button" class="backup-btn" id="soundBtn" title="Notification sound: loud / low / muted (remembered)">
+      🔔 Sound on
+    </button>
   </div>
 </footer>
 
@@ -1044,7 +1047,8 @@ div.g-day:hover { transform: none; }
     completedOpen: false,     // is the Completed section expanded?
     query: '',                // search text (within active category)
     editingId: null,          // reminder being edited (null = adding)
-    view: 'list'              // mobile main view: 'list' | 'calendar'
+    view: 'list',             // mobile main view: 'list' | 'calendar'
+    soundVol: 1               // alert volume: 1 (loud) | 0.5 (low) | 0 (muted)
   };
 
   // Track which reminders have already fired so notifications trigger once.
@@ -1140,6 +1144,7 @@ div.g-day:hover { transform: none; }
       if (prefs.mode)  state.mode  = prefs.mode;
       if (typeof prefs.completedOpen === 'boolean') state.completedOpen = prefs.completedOpen;
       if (prefs.view === 'calendar' || prefs.view === 'list') state.view = prefs.view;
+      if (prefs.soundVol === 1 || prefs.soundVol === 0.5 || prefs.soundVol === 0) state.soundVol = prefs.soundVol;
     } catch (e) { /* defaults already set */ }
   }
 
@@ -1156,7 +1161,7 @@ div.g-day:hover { transform: none; }
     try {
       localStorage.setItem(PREFS_KEY, JSON.stringify({
         theme: state.theme, mode: state.mode, completedOpen: state.completedOpen,
-        view: state.view
+        view: state.view, soundVol: state.soundVol
       }));
     } catch (e) { /* non-critical */ }
   }
@@ -1749,7 +1754,7 @@ div.g-day:hover { transform: none; }
       if (!fired[r.id] && t <= now && now - t < 60000) { // fire within 1 min of due time
         fired[r.id] = true;
         notify(r);
-        playChime();
+        playAlert();
 
         // Repeat rollover: push the reminder to its next occurrence.
         if (r.repeat === 'daily') {
@@ -1785,7 +1790,97 @@ div.g-day:hover { transform: none; }
     return toLocalISO(d);
   }
 
-  /** Soft chime via WebAudio; silent if the browser blocks autoplay. */
+  /* ---------------------------------------------------------------------
+     ALERT SOUND — a synthesized ~1.2s "ding-DONG" two-tone alert.
+     Rendered once to a WAV blob (no audio file needed — the app stays
+     self-contained) and preloaded into an <audio> element at page load,
+     so it fires instantly and is MUCH louder than the old whisper-quiet
+     WebAudio sine chime (peak ~0.12 → ~0.8 full-scale).
+     ------------------------------------------------------------------ */
+  var alertAudio = null;               // preloaded HTMLAudioElement
+
+  /** Synthesize a sharp two-tone alert (A5 → E5) as 16-bit mono WAV bytes. */
+  function buildAlertWav() {
+    var sr = 22050, dur = 1.2, n = (sr * dur) | 0;
+    var pcm = new Int16Array(n);
+    var tones = [
+      { f: 880.00, t0: 0.00, t1: 0.45 },   // "ding" — sharp, short
+      { f: 659.25, t0: 0.55, t1: 1.15 }    // "DONG" — lands with a decay tail
+    ];
+    for (var i = 0; i < n; i++) {
+      var t = i / sr, s = 0;
+      for (var k = 0; k < tones.length; k++) {
+        var tn = tones[k];
+        if (t >= tn.t0 && t < tn.t1) {
+          var lt = t - tn.t0, len = tn.t1 - tn.t0;
+          // 4ms fade-in / 30ms fade-out (anti-click) + slight sustain decay
+          var env = Math.min(1, lt / 0.004) * Math.min(1, (len - lt) / 0.03) * (1 - 0.25 * lt / len);
+          s += Math.sin(6.2832 * tn.f * lt) * 0.80 * env;       // fundamental — loud
+          s += Math.sin(6.2832 * tn.f * 2 * lt) * 0.16 * env;   // octave — "sharp" edge
+        }
+      }
+      pcm[i] = Math.max(-32768, Math.min(32767, Math.round(s * 32767)));
+    }
+    // Wrap the PCM in a minimal 44-byte WAV header.
+    var buf = new ArrayBuffer(44 + pcm.length * 2), v = new DataView(buf);
+    function str(off, s) { for (var j = 0; j < s.length; j++) v.setUint8(off + j, s.charCodeAt(j)); }
+    str(0, 'RIFF'); v.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE');
+    str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+    v.setUint16(22, 1, true); v.setUint32(24, sr, true);
+    v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    str(36, 'data'); v.setUint32(40, pcm.length * 2, true);
+    for (i = 0; i < n; i++) v.setInt16(44 + i * 2, pcm[i], true);
+    return buf;
+  }
+
+  /** Build + preload the alert audio (called once at page load). */
+  function initAlert() {
+    try {
+      var blob = new Blob([buildAlertWav()], { type: 'audio/wav' });
+      alertAudio = new Audio(URL.createObjectURL(blob));
+      alertAudio.preload = 'auto';           // zero delay when it fires
+      alertAudio.volume = state.soundVol;
+      alertAudio.load();
+    } catch (e) { alertAudio = null; /* WebAudio fallback covers us */ }
+  }
+
+  /** Play the alert at the chosen volume (0 = muted → stay silent). */
+  function playAlert() {
+    if (!state.soundVol) return;             // muted
+    try {
+      if (alertAudio) {
+        alertAudio.currentTime = 0;
+        alertAudio.volume = state.soundVol;  // explicit, right before .play()
+        var p = alertAudio.play();
+        if (p && p.catch) p.catch(function () { playChime(); }); // autoplay blocked
+      } else {
+        playChime();                         // blob unavailable → WebAudio path
+      }
+    } catch (e) { playChime(); }
+  }
+
+  /** iOS/Safari: audio needs one user gesture before it can play — silently
+      "unlock" both audio paths on the first tap so alerts work later. */
+  function unlockAudio() {
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) playChime._ctx = playChime._ctx || new Ctx();
+      if (playChime._ctx && playChime._ctx.state === 'suspended') playChime._ctx.resume();
+    } catch (e) {}
+    try {
+      if (alertAudio) {
+        alertAudio.volume = 0;
+        var p = alertAudio.play();
+        if (p && p.then) p.then(function () {
+          alertAudio.pause(); alertAudio.currentTime = 0;
+          alertAudio.volume = state.soundVol;
+        }).catch(function () {});
+      }
+    } catch (e) {}
+  }
+
+  /** Louder WebAudio fallback (kept from v1, upgraded: 4× the old gain,
+      same two-tone shape, in case Blob URLs or autoplay are blocked). */
   function playChime() {
     try {
       var Ctx = window.AudioContext || window.webkitAudioContext;
@@ -1793,16 +1888,66 @@ div.g-day:hover { transform: none; }
       var ctx = playChime._ctx || (playChime._ctx = new Ctx());
       if (ctx.state === 'suspended') ctx.resume();
       var t = ctx.currentTime;
-      [[880, 0], [1320, 0.18]].forEach(function (f) {  // pleasant two-note ding
+      [[880, 0], [659.25, 0.55]].forEach(function (f) {  // matches the WAV alert
         var o = ctx.createOscillator(), g = ctx.createGain();
-        o.frequency.value = f[0]; o.type = 'sine';
+        o.frequency.value = f[0]; o.type = 'triangle';
         g.gain.setValueAtTime(0.0001, t + f[1]);
-        g.gain.exponentialRampToValueAtTime(0.12, t + f[1] + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + f[1] + 0.5);
+        g.gain.exponentialRampToValueAtTime(0.5, t + f[1] + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + f[1] + 0.55);
         o.connect(g).connect(ctx.destination);
-        o.start(t + f[1]); o.stop(t + f[1] + 0.55);
+        o.start(t + f[1]); o.stop(t + f[1] + 0.6);
       });
     } catch (e) { /* audio is best-effort */ }
+  }
+
+  /** Footer sound-button label for the current volume level. */
+  function renderSoundBtn() {
+    var b = $('#soundBtn');
+    if (!b) return;
+    b.textContent = state.soundVol === 1 ? '🔔 Sound on'
+                  : state.soundVol === 0.5 ? '🔉 Sound low'
+                  : '🔕 Muted';
+  }
+
+  /* ------------------- missed reminders while hidden ------------------ */
+  /* Browsers throttle or fully pause timers (and audio) when an installed
+     PWA is backgrounded/minimized, so a reminder can come due with no way
+     to beep. When the app becomes visible/focused again, any reminder that
+     came due in that window fires immediately: notifications + ONE alert. */
+
+  var hiddenAt = 0;   // timestamp of the last hidden→ background transition (0 = visible)
+
+  function onAppVisible() {
+    var since = hiddenAt; hiddenAt = 0;
+    if (!since) return;                    // was never hidden — nothing to catch up
+    try { if (playChime._ctx && playChime._ctx.state === 'suspended') playChime._ctx.resume(); } catch (e) {}
+    catchUpMissed(since - 60000);          // 1-min grace for things due just before hiding
+  }
+
+  /** Fire everything that came due while the app was hidden. */
+  function catchUpMissed(since) {
+    var now = Date.now(), missed = [], changed = false;
+    state.reminders.forEach(function (r) {
+      if (r.done || fired[r.id]) return;
+      var t = remDate(r).getTime();
+      if (t <= now && t >= since) {
+        fired[r.id] = true;
+        notify(r);
+        missed.push(r);
+        // Same repeat rollover as tick().
+        if (r.repeat === 'daily')       { r.date = shiftDays(r.date, 1); changed = true; }
+        else if (r.repeat === 'weekly') { r.date = shiftDays(r.date, 7); changed = true; }
+      }
+    });
+    if (missed.length) {
+      if (changed) saveReminders();
+      render();                              // rolled-over dates must show
+      playAlert();                           // one sound for the whole batch
+      toast('⏰',
+        missed.length === 1 ? 'Reminder while you were away' : missed.length + ' reminders while you were away',
+        missed.length === 1 ? missed[0].title : missed[0].title + ' + ' + (missed.length - 1) + ' more',
+        8000);
+    }
   }
 
   /* ----------------------------- toasts ------------------------------ */
@@ -1995,6 +2140,36 @@ div.g-day:hover { transform: none; }
       }
     });
 
+    // ---- alert-sound & background catch-up wiring ----
+
+    // Track hidden→visible: reminders that came due while backgrounded
+    // (timers throttled/paused) fire immediately on return.
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) {
+        if (!hiddenAt) hiddenAt = Date.now();
+      } else {
+        onAppVisible();
+      }
+    });
+    // Focus/pageshow cover flows where visibilitychange is unreliable
+    // (e.g. some desktop-PWA window switches). No-op if never hidden.
+    window.addEventListener('focus', onAppVisible);
+    window.addEventListener('pageshow', onAppVisible);
+
+    // iOS/Safari need one user gesture to arm audio — unlock on first tap.
+    document.addEventListener('pointerdown', unlockAudio, { once: true });
+
+    // Footer sound toggle: loud → low → muted → loud … (persisted in prefs).
+    var soundBtn = $('#soundBtn');
+    if (soundBtn) {
+      soundBtn.addEventListener('click', function () {
+        state.soundVol = state.soundVol === 1 ? 0.5 : (state.soundVol === 0.5 ? 0 : 1);
+        savePrefs();
+        renderSoundBtn();
+        playAlert();   // instant audible confirmation at the new level
+      });
+    }
+
     // --- Search (filters within active category) ---
     $('#searchInput').addEventListener('input', function (e) {
       state.query = e.target.value.trim();
@@ -2176,6 +2351,8 @@ div.g-day:hover { transform: none; }
 
     glanceDayStr = toLocalISO(new Date());
     renderGreeting();
+    initAlert();      // synthesize + preload the alert sound
+    renderSoundBtn();
 
     setupNotifications();
     registerServiceWorker();
