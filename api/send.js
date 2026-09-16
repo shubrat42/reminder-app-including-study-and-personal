@@ -31,6 +31,13 @@ module.exports = async (req, res) => {
   const { sub, reminder } = msg || {};
   if (!sub || !sub.endpoint || !reminder) return json(res, 400, { error: 'bad payload' });
 
+  // Only our scheduler (QStash, which forwards the headers we set) may
+  // trigger deliveries — blocks outsiders from spamming push at your sub.
+  if (!process.env.APP_SECRET ||
+      req.headers['x-switchr-secret'] !== process.env.APP_SECRET) {
+    return json(res, 403, { error: 'unauthorized' });
+  }
+
   // Build the Notification payload the service worker will display.
   const payload = JSON.stringify({
     title: '⏰ ' + reminder.title,

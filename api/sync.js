@@ -142,7 +142,11 @@ module.exports = async (req, res) => {
             at: atMs, category: r.category || '',
           },
         },
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          // Proves to /api/send that THIS request came from our own scheduler.
+          'x-switchr-secret': process.env.APP_SECRET || '',
+        },
       });
       dev.schedule.set(messageId, sid);
       scheduled++;
