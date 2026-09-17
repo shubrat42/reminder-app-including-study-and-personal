@@ -55,4 +55,4 @@ if (!/alertAudio\.preload = 'auto'/.test(html)) { console.error('alert not prelo
 if (!/catchUpMissed/.test(html) || !/visibilitychange/.test(html)) { console.error('background catch-up missing'); process.exit(1); }
 if (!/soundBtn/.test(html) || !/soundVol/.test(html)) { console.error('sound toggle missing'); process.exit(1); }
 if (/playChime\(\);\s*$/m.test(html.replace(/function playAlert[\s\S]*?\n  \}/, '')) === false) { /* playChime still referenced */ }
-console.log('alert sound: preloaded WAV, explicit volume, catch-up on visible, volume toggle persisted');
+console.log('alert sound: preloaded MP3, explicit volume, catch-up on visible, volume toggle persisted');

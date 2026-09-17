@@ -1990,53 +1990,20 @@ div.g-day:hover { transform: none; }
   }
 
   /* ---------------------------------------------------------------------
-     ALERT SOUND — a synthesized ~1.2s "ding-DONG" two-tone alert.
-     Rendered once to a WAV blob (no audio file needed — the app stays
-     self-contained) and preloaded into an <audio> element at page load,
-     so it fires instantly and is MUCH louder than the old whisper-quiet
-     WebAudio sine chime (peak ~0.12 → ~0.8 full-scale).
+     ALERT SOUND — a real alarm-clock ring, bundled as assets/alarm.mp3
+     ("Alarm Clock Ringing" by universfield, via Pixabay — CC0 license).
+     Preloaded into an <audio> element at page load so it fires instantly,
+     and precached by the service worker so it also works fully offline.
+     The synthesized WebAudio chime stays as a fallback (e.g. if the file
+     is missing from a stale cache) and for the iOS audio-unlock path.
      ------------------------------------------------------------------ */
+  var ALERT_SRC  = 'assets/alarm.mp3'; // bundled alarm ring (license note above)
   var alertAudio = null;               // preloaded HTMLAudioElement
 
-  /** Synthesize a sharp two-tone alert (A5 → E5) as 16-bit mono WAV bytes. */
-  function buildAlertWav() {
-    var sr = 22050, dur = 1.2, n = (sr * dur) | 0;
-    var pcm = new Int16Array(n);
-    var tones = [
-      { f: 880.00, t0: 0.00, t1: 0.45 },   // "ding" — sharp, short
-      { f: 659.25, t0: 0.55, t1: 1.15 }    // "DONG" — lands with a decay tail
-    ];
-    for (var i = 0; i < n; i++) {
-      var t = i / sr, s = 0;
-      for (var k = 0; k < tones.length; k++) {
-        var tn = tones[k];
-        if (t >= tn.t0 && t < tn.t1) {
-          var lt = t - tn.t0, len = tn.t1 - tn.t0;
-          // 4ms fade-in / 30ms fade-out (anti-click) + slight sustain decay
-          var env = Math.min(1, lt / 0.004) * Math.min(1, (len - lt) / 0.03) * (1 - 0.25 * lt / len);
-          s += Math.sin(6.2832 * tn.f * lt) * 0.80 * env;       // fundamental — loud
-          s += Math.sin(6.2832 * tn.f * 2 * lt) * 0.16 * env;   // octave — "sharp" edge
-        }
-      }
-      pcm[i] = Math.max(-32768, Math.min(32767, Math.round(s * 32767)));
-    }
-    // Wrap the PCM in a minimal 44-byte WAV header.
-    var buf = new ArrayBuffer(44 + pcm.length * 2), v = new DataView(buf);
-    function str(off, s) { for (var j = 0; j < s.length; j++) v.setUint8(off + j, s.charCodeAt(j)); }
-    str(0, 'RIFF'); v.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE');
-    str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
-    v.setUint16(22, 1, true); v.setUint32(24, sr, true);
-    v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
-    str(36, 'data'); v.setUint32(40, pcm.length * 2, true);
-    for (i = 0; i < n; i++) v.setInt16(44 + i * 2, pcm[i], true);
-    return buf;
-  }
-
-  /** Build + preload the alert audio (called once at page load). */
+  /** Create + preload the alert audio element (called once at page load). */
   function initAlert() {
     try {
-      var blob = new Blob([buildAlertWav()], { type: 'audio/wav' });
-      alertAudio = new Audio(URL.createObjectURL(blob));
+      alertAudio = new Audio(ALERT_SRC);
       alertAudio.preload = 'auto';           // zero delay when it fires
       alertAudio.volume = state.soundVol;
       alertAudio.load();
@@ -2053,7 +2020,7 @@ div.g-day:hover { transform: none; }
         var p = alertAudio.play();
         if (p && p.catch) p.catch(function () { playChime(); }); // autoplay blocked
       } else {
-        playChime();                         // blob unavailable → WebAudio path
+        playChime();                         // MP3 unavailable → WebAudio path
       }
     } catch (e) { playChime(); }
   }

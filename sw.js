@@ -11,7 +11,7 @@
      are fine to store). Offline → falls back to the system font stack.
    =========================================================================== */
 
-const VERSION   = 'remindly-v10'; // v10: true background push (push + notificationclick handlers)
+const VERSION   = 'remindly-v11'; // v11: bundled alarm-clock MP3 replaces the synthesized chime
 const SHELL     = `${VERSION}-shell`;
 const RUNTIME   = `${VERSION}-runtime`;
 
@@ -21,6 +21,7 @@ const PRECACHE_URLS = [
   './index.html',
   './manifest.json',
   './festivals.json',   // offline Indian festival/holiday data
+  './assets/alarm.mp3', // bundled alarm ring (precached so it plays offline too)
   './icons/icon-192.png',
   './icons/icon-512.png',
 ];
