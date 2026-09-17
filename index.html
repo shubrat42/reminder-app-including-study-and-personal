@@ -2045,8 +2045,9 @@ div.g-day:hover { transform: none; }
     } catch (e) {}
   }
 
-  /** Louder WebAudio fallback (kept from v1, upgraded: 4× the old gain,
-      same two-tone shape, in case Blob URLs or autoplay are blocked). */
+  /** WebAudio emergency fallback for when the MP3 can't play (autoplay
+      blocked / file missing). Deliberately a DIFFERENT sound from the alarm
+      ring — three short high pulses — so it's never mistaken for it. */
   function playChime() {
     try {
       var Ctx = window.AudioContext || window.webkitAudioContext;
@@ -2054,14 +2055,14 @@ div.g-day:hover { transform: none; }
       var ctx = playChime._ctx || (playChime._ctx = new Ctx());
       if (ctx.state === 'suspended') ctx.resume();
       var t = ctx.currentTime;
-      [[880, 0], [659.25, 0.55]].forEach(function (f) {  // matches the WAV alert
+      [0, 0.18, 0.36].forEach(function (dt) {            // three quick pulses
         var o = ctx.createOscillator(), g = ctx.createGain();
-        o.frequency.value = f[0]; o.type = 'triangle';
-        g.gain.setValueAtTime(0.0001, t + f[1]);
-        g.gain.exponentialRampToValueAtTime(0.5, t + f[1] + 0.008);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + f[1] + 0.55);
+        o.frequency.value = 1175; o.type = 'sine';       // D6 — short + bright
+        g.gain.setValueAtTime(0.0001, t + dt);
+        g.gain.exponentialRampToValueAtTime(0.35, t + dt + 0.006);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.12);
         o.connect(g).connect(ctx.destination);
-        o.start(t + f[1]); o.stop(t + f[1] + 0.6);
+        o.start(t + dt); o.stop(t + dt + 0.14);
       });
     } catch (e) { /* audio is best-effort */ }
   }
@@ -2493,7 +2494,9 @@ div.g-day:hover { transform: none; }
   /* ------------------------------ boot ------------------------------- */
 
   /**
-   * Register the service worker (required for PWA install + offline use).
+   * Register the service worker (required for PWA install + offline use) and
+   * keep it fresh: every deploy activates on the next load/visit and the page
+   * reloads once into the new shell — no more "stuck on an old version" PWAs.
    * Service workers only exist on http(s) origins — when the file is opened
    * via file:// we simply skip registration; the app works either way.
    */
@@ -2501,8 +2504,43 @@ div.g-day:hover { transform: none; }
     if (!('serviceWorker' in navigator)) return;
     var local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     if (location.protocol !== 'https:' && !local) return;
-    navigator.serviceWorker.register('./sw.js').catch(function (err) {
+
+    navigator.serviceWorker.register('./sw.js').then(function (reg) {
+      // A newer worker already installed and waiting? Activate it now.
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+
+      // When a fresh worker finishes installing (i.e. a deploy happened),
+      // tell it to take over immediately instead of waiting for every tab
+      // to close.
+      reg.addEventListener('updatefound', function () {
+        var nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', function () {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            nw.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+
+      // Look for updates on load and every time the tab/PWA becomes visible
+      // again (covers long-lived installs).
+      reg.update().catch(function () {});
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') reg.update().catch(function () {});
+      });
+    }).catch(function (err) {
       console.warn('Service worker registration failed:', err);
+    });
+
+    // When the new worker takes control after an update, reload the page ONCE
+    // so the app actually runs the fresh shell. Guards prevent reload loops
+    // and skip the harmless first-install case (no previous controller).
+    var refreshing = false;
+    var hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (refreshing || !hadController) return;
+      refreshing = true;
+      location.reload();
     });
   }
 
@@ -2525,7 +2563,7 @@ div.g-day:hover { transform: none; }
 
     glanceDayStr = toLocalISO(new Date());
     renderGreeting();
-    initAlert();      // synthesize + preload the alert sound
+    initAlert();      // preload the bundled alarm MP3
     renderSoundBtn();
     renderPushBtn();  // reflect saved push preference in the footer
 

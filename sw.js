@@ -3,15 +3,15 @@
    ----------------------------------------------------------------------------
    Strategy:
    - Precache the app shell (HTML, manifest, icons) on install.
-   - Navigation requests: serve the cached shell instantly, then refresh the
-     cache in the background (stale-while-revalidate) so updates land on the
-     *next* load — the app never blocks on the network.
+   - Navigation requests: network-first with cached-shell fallback — deploys
+     show up on the very next load instead of one load late; offline falls
+     back to the cached shell.
    - Other same-origin GETs (e.g. icons): cache-first.
    - Google Fonts: served cache-first from a runtime cache (opaque responses
      are fine to store). Offline → falls back to the system font stack.
    =========================================================================== */
 
-const VERSION   = 'remindly-v11'; // v11: bundled alarm-clock MP3 replaces the synthesized chime
+const VERSION   = 'remindly-v12'; // v12: network-first navigations + auto-update on deploy
 const SHELL     = `${VERSION}-shell`;
 const RUNTIME   = `${VERSION}-runtime`;
 
@@ -55,22 +55,19 @@ self.addEventListener('fetch', (event) => {
   // Only handle GETs; let everything else (POST etc.) hit the network.
   if (req.method !== 'GET') return;
 
-  // --- App navigations: instant shell, then refresh in background. ---
+  // --- App navigations: network-first, cached shell when offline. ---
   if (req.mode === 'navigate') {
     event.respondWith(
-      caches.match('./index.html').then((cached) => {
-        const network = fetch(req)
-          .then((res) => {
-            // Keep the shell cache fresh for next launch.
-            if (res && res.ok) {
-              const copy = res.clone();
-              caches.open(SHELL).then((c) => c.put('./index.html', copy));
-            }
-            return res;
-          })
-          .catch(() => cached); // fully offline → cached shell
-        return cached || network;
-      })
+      fetch(req)
+        .then((res) => {
+          // Keep the shell cache fresh for offline fallback.
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(SHELL).then((c) => c.put('./index.html', copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match('./index.html')) // offline → cached shell
     );
     return;
   }
