@@ -32,10 +32,14 @@ check('muted path returns early', /if \(!state\.soundVol\) return;/.test(html), 
 check('WebAudio fallback kept', /function playChime\(\)/.test(html), '');
 check('fallback is NOT the old ding-dong', !/659\.25|880\.00/.test(html),
   'fallback is now three short pulses');
+check('in-app notification is silent (MP3 provides the sound)',
+  /new Notification\('⏰ ' \+ rem\.title, \{[\s\S]{0,220}?silent: true/.test(html), '');
 
 console.log('[3] service worker');
 const sw = fs.readFileSync('sw.js', 'utf8');
 check('MP3 precached for offline', /'\.\/assets\/alarm\.mp3'/.test(sw), '');
-check('cache version bumped to v12', /remindly-v12/.test(sw), '');
+check('cache version bumped to v13', /remindly-v13/.test(sw), '');
+check('push notification silent only while app is visible',
+  /silent: appVisible/.test(sw), 'OS sound kept when app is closed');
 
 process.exit(fail);

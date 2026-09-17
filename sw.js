@@ -11,7 +11,7 @@
      are fine to store). Offline → falls back to the system font stack.
    =========================================================================== */
 
-const VERSION   = 'remindly-v12'; // v12: network-first navigations + auto-update on deploy
+const VERSION   = 'remindly-v13'; // v13: silent OS notification while app is open (MP3 plays instead)
 const SHELL     = `${VERSION}-shell`;
 const RUNTIME   = `${VERSION}-runtime`;
 
@@ -108,15 +108,28 @@ self.addEventListener('push', (event) => {
   try { data = event.data ? event.data.json() : {}; } catch (e) { /* show generic */ }
 
   event.waitUntil(
-    self.registration.showNotification(data.title || '⏰ Switchr reminder', {
-      body: data.body || '',
-      tag: data.tag || 'switchr',            // dedupes re-fires of the same reminder
-      renotify: data.renotify || false,      // re-alert even if tag already shown
-      requireInteraction: data.requireInteraction || false,
-      icon: data.icon || '/icons/icon-192.png',
-      badge: data.badge || '/icons/icon-192.png',
-      data: { url: data.data && data.data.url || '/' },
-    })
+    (async () => {
+      // If a VISIBLE app window exists, it plays its own alarm MP3 — keep the
+      // OS notification sound OFF so the two never double up (the app-open
+      // "ding-dong" the user heard was this OS sound). No visible window
+      // (app fully closed) → silent=false, so the OS still audibly alerts.
+      let appVisible = false;
+      try {
+        const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        appVisible = list.some((c) => c.visibilityState === 'visible');
+      } catch (e) { /* default to audible */ }
+
+      return self.registration.showNotification(data.title || '⏰ Switchr reminder', {
+        body: data.body || '',
+        tag: data.tag || 'switchr',            // dedupes re-fires of the same reminder
+        renotify: data.renotify || false,      // re-alert even if tag already shown
+        requireInteraction: data.requireInteraction || false,
+        icon: data.icon || '/icons/icon-192.png',
+        badge: data.badge || '/icons/icon-192.png',
+        silent: appVisible,                    // see comment above
+        data: { url: data.data && data.data.url || '/' },
+      });
+    })()
   );
 });
 

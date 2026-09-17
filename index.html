@@ -1924,7 +1924,12 @@ div.g-day:hover { transform: none; }
     var body = (rem.notes ? rem.notes + '\n' : '') + fmtDate(rem.date) + ' · ' + fmtTime(rem.time);
     if ('Notification' in window && Notification.permission === 'granted') {
       try {
-        var n = new Notification('⏰ ' + rem.title, { body: body, tag: rem.id }); // tag dedupes repeats
+        var n = new Notification('⏰ ' + rem.title, {
+          body: body,
+          tag: rem.id,        // tag dedupes repeats
+          silent: true        // OS "ding-dong" OFF — the app plays its own
+                              // alarm MP3 (playAlert) right after this.
+        });
         n.onclick = function () { window.focus(); n.close(); };
       } catch (e) { toastFallback(rem); } // Some browsers throw if SW-less; fall back
     } else {
