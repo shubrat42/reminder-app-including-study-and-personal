@@ -5,5 +5,8 @@
   "description": "Switchr — Study/Personal reminder PWA with true background push notifications",
   "dependencies": {
     "@upstash/qstash": "^2.7.20"
+  },
+  "engines": {
+    "node": "20.x"
   }
 }
