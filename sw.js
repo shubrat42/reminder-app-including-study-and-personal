@@ -11,7 +11,7 @@
      are fine to store). Offline → falls back to the system font stack.
    =========================================================================== */
 
-const VERSION   = 'remindly-v13'; // v13: silent OS notification while app is open (MP3 plays instead)
+const VERSION   = 'remindly-v14'; // v14: actionable notifications (Done / Snooze + vibration)
 const SHELL     = `${VERSION}-shell`;
 const RUNTIME   = `${VERSION}-runtime`;
 
@@ -126,24 +126,56 @@ self.addEventListener('push', (event) => {
         requireInteraction: data.requireInteraction || false,
         icon: data.icon || '/icons/icon-192.png',
         badge: data.badge || '/icons/icon-192.png',
+        vibrate: [200, 100, 200, 100, 400],    // alarm-like pattern, not a single buzz
+        actions: [                             // shown by Android + desktop Chrome
+          { action: 'done',   title: '✅ Mark done' },
+          { action: 'snooze', title: '⏰ Snooze 10m' },
+        ],
         silent: appVisible,                    // see comment above
-        data: { url: data.data && data.data.url || '/' },
+        data: {
+          url: data.data && data.data.url || '/',
+          id: data.data && data.data.id || '',         // lets actions act on the reminder
+          category: data.data && data.data.category || '',
+        },
       });
     })()
   );
 });
 
-/* Clicking the notification opens/focuses the app. */
+/* Notification interaction — Done / Snooze buttons + plain clicks.
+   - Action button pressed: forward it to an open app window (postMessage) so
+     the running app marks done / snoozes instantly, no reload. If no window
+     is open, deep-link with ?action=&id= so the app applies it on launch.
+   - Plain body click: keep the old behavior — focus/open the app. */
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/';
+  const nd = event.notification.data || {};
+  const action = event.action;                 // '' for plain body clicks
+  const reminderId = nd.id || '';
+
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Focus an existing window if one is open, else open a new one.
-      for (const client of clientList) {
-        if ('focus' in client) return client.focus();
+      // Prefer a visible window, else any open one.
+      const client = clientList.find((c) => c.visibilityState === 'visible') || clientList[0];
+
+      if (action && reminderId) {
+        if (client) {
+          // App is open → hand over the action; it updates localStorage + UI.
+          client.postMessage({ type: 'notification-action', action, reminderId });
+          if ('focus' in client) client.focus();
+          return;
+        }
+        // App fully closed → apply on next launch via URL params.
+        const base = (nd.url || '/').split('?')[0];
+        return self.clients.openWindow(
+          base + '?action=' + encodeURIComponent(action) +
+                 '&id=' + encodeURIComponent(reminderId)
+        );
       }
-      return self.clients.openWindow(url);
+
+      // Plain click → focus an existing window if one is open, else open one.
+      if (client) return 'focus' in client ? client.focus() : undefined;
+      return self.clients.openWindow(nd.url || '/');
     })
   );
 });

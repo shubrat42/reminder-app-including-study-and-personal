@@ -38,8 +38,23 @@ check('in-app notification is silent (MP3 provides the sound)',
 console.log('[3] service worker');
 const sw = fs.readFileSync('sw.js', 'utf8');
 check('MP3 precached for offline', /'\.\/assets\/alarm\.mp3'/.test(sw), '');
-check('cache version bumped to v13', /remindly-v13/.test(sw), '');
+check('cache version bumped to v14', /remindly-v14/.test(sw), '');
 check('push notification silent only while app is visible',
   /silent: appVisible/.test(sw), 'OS sound kept when app is closed');
+
+console.log('[4] actionable notifications');
+const apiSend = fs.readFileSync('api/send.js', 'utf8');
+check('alarm vibration pattern', /vibrate:\s*\[200, 100, 200, 100, 400\]/.test(sw), '');
+check('Done + Snooze action buttons', /action:\s*'done'/.test(sw) && /action:\s*'snooze'/.test(sw), '');
+check('payload carries reminder id + category', /id: data\.data && data\.data\.id/.test(sw) &&
+  /id: reminder\.id/.test(apiSend), '');
+check('click handler branches on event.action', /event\.action/.test(sw), '');
+check('open app gets postMessage action', /type:\s*'notification-action'/.test(sw) &&
+  /notification-action/.test(html), '');
+check('closed app deep-links ?action=&id=', /'\?action=' \+ encodeURIComponent/.test(sw) &&
+  /applyUrlAction/.test(html), '');
+check('URL params stripped after applying', /history\.replaceState\(null, '', location\.pathname\)/.test(html), '');
+check('snooze resyncs QStash via saveReminders',
+  /delete fired\[rem\.id\];[\s\S]{0,120}saveReminders\(\);[\s\S]{0,80}resyncs the QStash schedule|.\/\/ → resyncs the QStash schedule/.test(html), '');
 
 process.exit(fail);

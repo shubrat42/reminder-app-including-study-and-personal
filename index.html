@@ -1187,6 +1187,66 @@ div.g-day:hover { transform: none; }
   }
 
   /** Persist reminders. */
+  /* ==========================================================================
+     5a. NOTIFICATION ACTIONS — Done / Snooze straight from the notification
+     ----------------------------------------------------------------------------
+     Both entry points converge on applyNotificationAction():
+       • SW postMessage while the app is open (acts instantly, no reload)
+       • ?action=&id= URL params when launched from a fully closed state
+         (stripped via history.replaceState so a refresh can't re-apply)
+     Snooze shifts the due time +10 minutes; saving re-syncs QStash through
+     saveReminders → schedulePushSync, so the backend fires at the NEW time.
+     ========================================================================== */
+  var APPLIED_URL_ACTION = { key: '' };   // guard against double-applying
+
+  /** Mark a reminder done, or shift its due time +10 minutes. */
+  function applyNotificationAction(action, reminderId) {
+    var rem = state.reminders.find(function (x) { return x.id === reminderId; });
+    if (!rem) return;
+
+    if (action === 'done') {
+      rem.done = true;
+      fired[rem.id] = true;              // done items must never fire again
+      saveReminders();
+      render();
+      toast('✅', 'Done!', '"' + rem.title + '" marked complete.');
+    } else if (action === 'snooze') {
+      var d = remDate(rem);
+      d.setMinutes(d.getMinutes() + 10);            // +10 minutes
+      rem.date = toLocalISO(d);
+      rem.time = pad(d.getHours()) + ':' + pad(d.getMinutes());
+      delete fired[rem.id];              // it should fire again at the new time
+      saveReminders();                   // → resyncs the QStash schedule
+      render();
+      toast('⏰', 'Snoozed', '"' + rem.title + '" will ring again in 10 minutes.');
+    }
+  }
+
+  /** App is open: the service worker forwards notification button presses. */
+  function wireNotificationActions() {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.addEventListener('message', function (e) {
+      var m = e.data || {};
+      if (m.type === 'notification-action' && m.action && m.reminderId) {
+        applyNotificationAction(m.action, m.reminderId);
+      }
+    });
+  }
+
+  /** App was closed: the SW deep-linked us with ?action=&id= — apply it once,
+      then scrub the URL so refreshing doesn't apply it a second time. */
+  function applyUrlAction() {
+    var q = new URLSearchParams(location.search);
+    var action = q.get('action'), id = q.get('id');
+    if (!action || !id) return;
+    var key = action + ':' + id;
+    if (APPLIED_URL_ACTION.key === key) return;
+    APPLIED_URL_ACTION.key = key;
+    applyNotificationAction(action, id);
+    try { history.replaceState(null, '', location.pathname); }  // strip params
+    catch (e) { /* sandboxed context — harmless */ }
+  }
+
   function saveReminders() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.reminders)); }
     catch (e) { toast('⚠️', 'Storage full', 'Could not save reminders.'); }
@@ -2565,6 +2625,7 @@ div.g-day:hover { transform: none; }
     wireEvents();
     rearmFired();
     render();
+    applyUrlAction();         // handle ?action=&id= deep-links (closed-app button presses)
 
     glanceDayStr = toLocalISO(new Date());
     renderGreeting();
@@ -2574,6 +2635,7 @@ div.g-day:hover { transform: none; }
 
     setupNotifications();
     registerServiceWorker();
+    wireNotificationActions();  // Done/Snooze buttons pressed while app is open
     restorePush();    // re-use the browser's saved push subscription if any
     checkBackend();   // show backend health line in the footer
     setInterval(tick, 1000);   // 1s: countdowns stay fresh, trigger check is cheap

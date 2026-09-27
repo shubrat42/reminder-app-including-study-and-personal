@@ -74,7 +74,11 @@ module.exports = async (req, res) => {
     tag: 'switchr-' + reminder.id,       // dedupes re-fires of the same reminder
     renotify: true,                      // re-show if a previous one was closed
     requireInteraction: true,            // stays until dismissed (desktop)
-    data: { url: '/' },
+    data: {
+      url: '/',
+      id: reminder.id,              // lets SW Done/Snooze actions act on it
+      category: reminder.category || '',
+    },
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
   });
