@@ -24,8 +24,9 @@ check('not silent (contains non-zero frames)', mp3.some((b) => b > 0x10), '');
 
 console.log('[2] index.html wiring');
 const html = fs.readFileSync('index.html', 'utf8');
-check('ALERT_SRC points at the MP3', /var ALERT_SRC\s*=\s*'assets\/alarm\.mp3'/.test(html), '');
-check('no stale synthesized-WAV generator left', !/buildAlertWav|audio\/wav/.test(html), '');
+check('alarm preset points at the MP3', /alarm:\s*'assets\/alarm\.mp3'/.test(html), '');
+check('old ding-dong tones gone', !/880\.00|659\.25/.test(html),
+  'presets are chime (G5/C6) + beep (1kHz) now');
 check('preloaded at page load', /alertAudio\.preload\s*=\s*'auto'/.test(html), '');
 check('explicit volume right before .play()', /alertAudio\.volume\s*=\s*state\.soundVol;[^;]{0,80}alertAudio\.play\(\)/.test(html), '');
 check('muted path returns early', /if \(!state\.soundVol\) return;/.test(html), '');
@@ -38,7 +39,7 @@ check('in-app notification is silent (MP3 provides the sound)',
 console.log('[3] service worker');
 const sw = fs.readFileSync('sw.js', 'utf8');
 check('MP3 precached for offline', /'\.\/assets\/alarm\.mp3'/.test(sw), '');
-check('cache version bumped to v14', /remindly-v14/.test(sw), '');
+check('cache version bumped to v15', /remindly-v15/.test(sw), '');
 check('push notification silent only while app is visible',
   /silent: appVisible/.test(sw), 'OS sound kept when app is closed');
 

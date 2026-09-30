@@ -11,7 +11,7 @@
      are fine to store). Offline → falls back to the system font stack.
    =========================================================================== */
 
-const VERSION   = 'remindly-v14'; // v14: actionable notifications (Done / Snooze + vibration)
+const VERSION   = 'remindly-v15'; // v15: settings panel (sounds, accents, clock, contact)
 const SHELL     = `${VERSION}-shell`;
 const RUNTIME   = `${VERSION}-runtime`;
 
