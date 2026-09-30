@@ -39,7 +39,7 @@ check('in-app notification is silent (MP3 provides the sound)',
 console.log('[3] service worker');
 const sw = fs.readFileSync('sw.js', 'utf8');
 check('MP3 precached for offline', /'\.\/assets\/alarm\.mp3'/.test(sw), '');
-check('cache version bumped to v15', /remindly-v15/.test(sw), '');
+check('cache version bumped to v16', /remindly-v16/.test(sw), '');
 check('push notification silent only while app is visible',
   /silent: appVisible/.test(sw), 'OS sound kept when app is closed');
 

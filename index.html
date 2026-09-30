@@ -226,6 +226,7 @@
 .switch { position: relative; width: 46px; height: 28px; flex: none; }
 .switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
 .switch .knob {
+  pointer-events: none;             /* clicks fall through to the input itself */
   position: absolute; inset: 0; border-radius: 999px;
   background: var(--hairline-strong, rgba(120,120,128,.32));
   transition: background var(--t-fast);
@@ -296,6 +297,156 @@
 
 @media (max-width: 720px) {
   .clock { display: none; }              /* phones: greeting already shows time-ish info */
+}
+
+/* ===========================================================================
+   9. CLOCK PAGE — tabbed World Clock / Alarm / Stopwatch / Timer
+   Own full-page card, separate from the reminders List/Calendar views.
+   Rules here are appended LAST so they win the cascade over earlier
+   .view-switch display toggles (this also fixes the mobile switcher's
+   source-order conflict between its media query and the desktop rule).
+   ========================================================================= */
+.clock-page { display: none; }
+body[data-view="clock"] .clock-page { display: block; }
+body[data-view="clock"] .list-panel,
+body[data-view="clock"] .calendar-panel { display: none; }
+
+.clock-page { max-width: 720px; margin: 0 auto; padding: 22px; }
+.ck-head { display: flex; align-items: center; margin-bottom: 14px; }
+.ck-head h2 { font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
+.ck-back {
+  margin-left: auto; border: 1px solid var(--glass-brd); background: var(--glass-bg);
+  color: var(--text-soft); font: 600 12.5px/1 inherit; font-family: inherit;
+  padding: 8px 14px; border-radius: 999px; cursor: pointer;
+  transition: border-color var(--t-fast), color var(--t-fast);
+}
+.ck-back:hover { border-color: var(--accent); color: var(--text); }
+
+.ck-tabs {
+  display: flex; gap: 4px; padding: 3px; border-radius: 999px;
+  background: var(--surface-2); margin-bottom: 18px; width: 100%;
+}
+.ck-tab {
+  flex: 1; border: 0; background: transparent; cursor: pointer;
+  font: 600 12.5px/1 inherit; font-family: inherit; color: var(--text-soft);
+  padding: 9px 6px; border-radius: 999px; white-space: nowrap;
+  transition: color var(--t-fast), background var(--t-fast);
+}
+.ck-tab.on { background: var(--glass-bg); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.10); }
+.ck-pane { display: none; }
+.ck-pane.on { display: block; animation: ckfade var(--t-med); }
+@keyframes ckfade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* --- World clock --- */
+.wc-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 12px 2px; border-bottom: 1px solid var(--hairline);
+}
+.wc-row:last-child { border-bottom: none; }
+.wc-city b { font-size: 15px; font-weight: 600; }
+.wc-city small { display: block; font-size: 11.5px; color: var(--text-soft); }
+.wc-time { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wc-time small { font-size: 12px; font-weight: 600; color: var(--text-soft); margin-left: 2px; }
+.wc-local { color: var(--accent); }
+
+/* --- Stopwatch / Timer shared display --- */
+.stopwatch-face, .timer-face {
+  text-align: center; padding: 18px 0 6px;
+}
+.sw-display {
+  font-size: 52px; font-weight: 800; letter-spacing: .01em;
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.sw-display small { font-size: 26px; font-weight: 700; color: var(--text-soft); }
+.ck-controls { display: flex; justify-content: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.ck-btn {
+  border: 1px solid var(--glass-brd); background: var(--glass-sheen), var(--glass-bg);
+  color: var(--text); font: 600 14px/1 inherit; font-family: inherit;
+  padding: 12px 22px; border-radius: 999px; cursor: pointer; min-width: 96px;
+  transition: transform var(--t-fast), border-color var(--t-fast), opacity var(--t-fast);
+}
+.ck-btn:hover { border-color: var(--accent); }
+.ck-btn:active { transform: scale(.96); }
+.ck-btn:disabled { opacity: .4; cursor: default; }
+.ck-btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+.ck-btn.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+
+.laps { max-height: 220px; overflow-y: auto; margin-top: 16px; }
+.lap-row {
+  display: flex; gap: 12px; padding: 9px 6px;
+  border-bottom: 1px solid var(--hairline); font-variant-numeric: tabular-nums;
+}
+.lap-row:last-child { border-bottom: none; }
+.lap-row .n { width: 52px; color: var(--text-soft); font-size: 13px; }
+.lap-row .t { flex: 1; font-weight: 600; }
+.lap-row .tot { color: var(--text-soft); }
+
+/* --- Timer ring + presets --- */
+.timer-wrap { position: relative; width: 220px; margin: 6px auto 2px; }
+.timer-wrap svg { display: block; width: 100%; height: auto; transform: rotate(-90deg); }
+.timer-ring-bg { fill: none; stroke: var(--hairline); stroke-width: 10; }
+.timer-ring { fill: none; stroke: var(--accent); stroke-width: 10; stroke-linecap: round;
+  transition: stroke-dashoffset .3s linear; }
+.timer-mid {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.timer-inputs { display: flex; justify-content: center; gap: 8px; margin: 14px 0 4px; }
+.timer-inputs label { font-size: 11.5px; color: var(--text-soft); text-align: center; }
+.timer-inputs input {
+  width: 64px; padding: 9px 6px; border-radius: 12px; text-align: center;
+  font: 600 16px/1.2 inherit; font-family: inherit; color: var(--text);
+  border: 1px solid var(--glass-brd); background: var(--glass-bg);
+  -moz-appearance: textfield; appearance: textfield;
+}
+.timer-inputs input::-webkit-outer-spin-button,
+.timer-inputs input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ck-presets { display: flex; justify-content: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.ck-preset {
+  border: 1px solid var(--glass-brd); background: var(--glass-bg); color: var(--text-soft);
+  font: 600 12.5px/1 inherit; font-family: inherit;
+  padding: 8px 14px; border-radius: 999px; cursor: pointer;
+  transition: border-color var(--t-fast), color var(--t-fast);
+}
+.ck-preset:hover, .ck-preset.on { border-color: var(--accent); color: var(--text); }
+
+/* --- Alarms --- */
+.alarm-add { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.alarm-add input[type="time"] {
+  font: 600 16px/1.2 inherit; font-family: inherit; color: var(--text);
+  padding: 9px 10px; border-radius: 12px;
+  border: 1px solid var(--glass-brd); background: var(--glass-bg);
+}
+.alarm-add input[type="text"] {
+  flex: 1; min-width: 120px; font: 500 14px/1.2 inherit; font-family: inherit; color: var(--text);
+  padding: 10px 12px; border-radius: 12px;
+  border: 1px solid var(--glass-brd); background: var(--glass-bg);
+}
+.alarm-row {
+  display: flex; align-items: center; gap: 12px; padding: 12px 2px;
+  border-bottom: 1px solid var(--hairline);
+}
+.alarm-row:last-child { border-bottom: none; }
+.alarm-row .a-time { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.alarm-row.off .a-time, .alarm-row.off .a-label { opacity: .4; }
+.alarm-row .a-main { flex: 1; min-width: 0; }
+.alarm-row .a-label { font-size: 13px; font-weight: 500; overflow-wrap: break-word; }
+.alarm-row .a-days { display: flex; gap: 3px; margin-top: 3px; }
+.a-day {
+  width: 20px; height: 20px; border-radius: 50%; font-size: 9.5px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--text-soft);
+}
+.a-day.on { background: var(--accent); color: #fff; }
+.alarm-empty { text-align: center; color: var(--text-soft); font-size: 13.5px; padding: 18px 0 6px; }
+
+/* Mobile: 3-tab nav (List / Calendar / Clock) — declared after the earlier
+   desktop rule so the cascade finally favors the media query. */
+@media (max-width: 720px) {
+  .view-switch { display: flex; justify-content: center; padding: 0 20px 14px; }
+  .sw-display { font-size: 44px; }
+  .timer-mid { font-size: 34px; }
+  .clock-page { padding: 16px; }
 }
 
 /* ===========================================================================
@@ -974,6 +1125,10 @@ div.g-day:hover { transform: none; }
     <!-- Light / dark toggle -->
     <button class="icon-btn theme-btn" id="themeBtn" title="Toggle light/dark theme" aria-label="Toggle theme">🌙</button>
 
+    <!-- Clock page (alarms · stopwatch · timer) — desktop entry point;
+         on phones the List/Calendar/Clock switcher below the header does it -->
+    <button class="icon-btn" id="clockViewBtn" title="Clock — alarms, stopwatch, timer" aria-label="Open the clock page">🕗</button>
+
     <!-- Settings (gear) → settings modal -->
     <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Open settings">⚙️</button>
   </div>
@@ -985,6 +1140,7 @@ div.g-day:hover { transform: none; }
   <div class="view-tabs" role="tablist" aria-label="Switch view">
     <button class="view-tab on" role="tab" aria-selected="true" data-view="list">List</button>
     <button class="view-tab" role="tab" aria-selected="false" data-view="calendar">Calendar</button>
+    <button class="view-tab" role="tab" aria-selected="false" data-view="clock">Clock</button>
   </div>
 </div>
 
@@ -1061,6 +1217,89 @@ div.g-day:hover { transform: none; }
     <div class="day-pop" id="dayPop" hidden></div>
   </aside>
 </main>
+
+<!-- =======================================================================
+     CLOCK PAGE — tabbed World Clock / Alarm / Stopwatch / Timer
+     A separate full-page view (body[data-view="clock"]), styled with the
+     theme's tokens; alarm/timer sounds come from the shared settings engine.
+     ======================================================================= -->
+<section class="card clock-page" aria-label="Clock">
+  <div class="ck-head">
+    <h2>Clock</h2>
+    <button type="button" class="ck-back" id="ckBackBtn">‹ Back</button>
+  </div>
+
+  <div class="ck-tabs" role="tablist" aria-label="Clock sections">
+    <button class="ck-tab on" role="tab" aria-selected="true" data-ck="world">World</button>
+    <button class="ck-tab" role="tab" aria-selected="false" data-ck="alarm">Alarm</button>
+    <button class="ck-tab" role="tab" aria-selected="false" data-ck="stopwatch">Stopwatch</button>
+    <button class="ck-tab" role="tab" aria-selected="false" data-ck="timer">Timer</button>
+  </div>
+
+  <!-- World clock (rendered by JS) -->
+  <div class="ck-pane on" data-pane="world" id="worldPane"></div>
+
+  <!-- Alarm -->
+  <div class="ck-pane" data-pane="alarm">
+    <div class="alarm-add">
+      <input type="time" id="alarmTime" value="07:00" aria-label="Alarm time">
+      <input type="text" id="alarmLabel" maxlength="60" placeholder="Label (optional)" aria-label="Alarm label">
+      <button type="button" class="ck-btn primary" id="alarmSaveBtn" style="min-width:auto; padding:11px 18px">Add</button>
+    </div>
+    <div class="alarm-add" style="margin-bottom:4px">
+      <span style="font-size:12px; color:var(--text-soft)">Repeat:</span>
+      <button type="button" class="ck-preset" data-aday="1">Mon</button>
+      <button type="button" class="ck-preset" data-aday="2">Tue</button>
+      <button type="button" class="ck-preset" data-aday="3">Wed</button>
+      <button type="button" class="ck-preset" data-aday="4">Thu</button>
+      <button type="button" class="ck-preset" data-aday="5">Fri</button>
+      <button type="button" class="ck-preset" data-aday="6">Sat</button>
+      <button type="button" class="ck-preset" data-aday="0">Sun</button>
+    </div>
+    <div id="alarmList"></div>
+  </div>
+
+  <!-- Stopwatch -->
+  <div class="ck-pane" data-pane="stopwatch">
+    <div class="stopwatch-face">
+      <div class="sw-display" id="swDisplay">00:00<small>.00</small></div>
+      <div class="ck-controls">
+        <button type="button" class="ck-btn primary" id="swStartBtn">Start</button>
+        <button type="button" class="ck-btn" id="swLapBtn" disabled>Lap</button>
+        <button type="button" class="ck-btn danger" id="swResetBtn" disabled>Reset</button>
+      </div>
+      <div class="laps" id="swLaps"></div>
+    </div>
+  </div>
+
+  <!-- Timer -->
+  <div class="ck-pane" data-pane="timer">
+    <div class="timer-face">
+      <div class="timer-wrap">
+        <svg viewBox="0 0 200 200" aria-hidden="true">
+          <circle class="timer-ring-bg" cx="100" cy="100" r="90"></circle>
+          <circle class="timer-ring" id="timerRing" cx="100" cy="100" r="90"></circle>
+        </svg>
+        <div class="timer-mid" id="timerDisplay">05:00</div>
+      </div>
+      <div class="ck-presets" id="timerPresets">
+        <button type="button" class="ck-preset on" data-mins="1">1 min</button>
+        <button type="button" class="ck-preset" data-mins="5">5 min</button>
+        <button type="button" class="ck-preset" data-mins="10">10 min</button>
+        <button type="button" class="ck-preset" data-mins="25">25 min</button>
+      </div>
+      <div class="timer-inputs">
+        <label>H<br><input type="number" id="timerH" min="0" max="23" value="0"></label>
+        <label>M<br><input type="number" id="timerM" min="0" max="59" value="5"></label>
+        <label>S<br><input type="number" id="timerS" min="0" max="59" value="0"></label>
+      </div>
+      <div class="ck-controls">
+        <button type="button" class="ck-btn primary" id="timerStartBtn">Start</button>
+        <button type="button" class="ck-btn danger" id="timerCancelBtn" disabled>Cancel</button>
+      </div>
+    </div>
+  </div>
+</section>
 
 <footer class="app-footer">
   Switchr · reminders are stored locally in your browser. Background push (optional) is relayed by our tiny serverless backend.
@@ -1315,7 +1554,8 @@ div.g-day:hover { transform: none; }
     accStudy: '',             // custom Study hex (empty = use preset)
     accPersonal: '',          // custom Personal hex
     fmt24: false,             // 24-hour time format (default 12h)
-    tick: false               // quiet clock tick every second (default off)
+    tick: false,              // quiet clock tick every second (default off)
+    alarms: []                // Clock page alarms — OWN storage key, NOT reminders
   };
 
   // Track which reminders have already fired so notifications trigger once.
@@ -1388,7 +1628,8 @@ div.g-day:hover { transform: none; }
 
   /** Mobile view switch: 'list' | 'calendar' (desktop shows both panels). */
   function setView(v) {
-    state.view = (v === 'calendar') ? 'calendar' : 'list';
+    if (v !== 'clock') lastMainView = (v === 'calendar') ? 'calendar' : 'list';
+    state.view = (v === 'calendar' || v === 'clock') ? v : 'list';
     document.body.dataset.view = state.view;
     document.querySelectorAll('.view-tab').forEach(function (t) {
       var on = t.dataset.view === state.view;
@@ -1719,6 +1960,7 @@ div.g-day:hover { transform: none; }
     }
     var s = new Date().getSeconds();
     if (s !== lastClockSec) { lastClockSec = s; if (state.tick) playTick(); }
+    if (state.view === 'clock') renderWorldClock();   // live world-clock rows
   }
 
   /** Very quiet tick — deliberately near-silent (gain 0.018 ≈ 2% volume),
@@ -1756,6 +1998,7 @@ div.g-day:hover { transform: none; }
   /** Wire every settings control + the contact section (called once). */
   function wireSettings() {
     var so = $('#settingsOverlay');
+    $('#clockViewBtn').addEventListener('click', function () { setView('clock'); });
     $('#settingsBtn').addEventListener('click', openSettings);
     $('#settingsCloseBtn').addEventListener('click', closeSettings);
     so.addEventListener('click', function (e) { if (e.target === so) closeSettings(); });
@@ -1769,8 +2012,7 @@ div.g-day:hover { transform: none; }
     });
     $('#previewBtn').addEventListener('click', function () {
       if (state.snd === 'custom' && !customBlobURL) { $('#soundFile').click(); return; }
-      initAlert();
-      playAlert();
+      playPreview();               // dedicated element → always ONE clean play
     });
     $('#soundFile').addEventListener('change', function (e) {
       var f = e.target.files && e.target.files[0];
@@ -1838,6 +2080,405 @@ div.g-day:hover { transform: none; }
         navigator.clipboard.writeText(CONTACT_DISCORD).then(done, function () { fallbackCopy(); done(); });
       } else { fallbackCopy(); done(); }
     });
+  }
+
+  /* ==========================================================================
+     5d. SOUND PREVIEW — dedicated element so Preview plays exactly ONCE
+     The alert player (alertAudio) is reused for repeated alarms; Preview
+     gets its own <audio> that is replaced per click — a finished blob URL
+     simply ends and stops. Never touches the alarm player.
+     ========================================================================== */
+  var previewAudio = null;
+
+  /** Play the currently-selected sound ONCE. */
+  function playPreview() {
+    try {
+      if (!previewAudio) previewAudio = new Audio();
+      previewAudio.pause();                       // stop any previous preview
+      var url = null;
+      if (state.snd === 'alarm') url = SND_PRESETS.alarm;
+      else if (state.snd === 'custom') url = customBlobURL;
+      else url = URL.createObjectURL(new Blob([buildPresetWav(state.snd)], { type: 'audio/wav' }));
+      if (!url) { toast('⚠️', 'No sound yet', 'Upload an audio file first.'); return; }
+      previewAudio.src = url;
+      previewAudio.volume = state.soundVol;       // respect the 🔔/🔉/🔕 setting
+      var p = previewAudio.play();                // ends naturally — no loop
+      if (p && p.catch) p.catch(function () { playChime(); });
+    } catch (e) { playChime(); }
+  }
+
+  /* ==========================================================================
+     6. CLOCK PAGE — World Clock · Alarm · Stopwatch · Timer
+     ----------------------------------------------------------------------------
+     A separate full-page view (body[data-view="clock"]), independent from the
+     Study/Personal reminders. Alarms live under their OWN localStorage key,
+     never mix into reminders or the calendar, and — when push is enabled —
+     ride the EXISTING QStash pipeline by presenting as category-less
+     synthetic reminders to /api/sync (so closed-app delivery just works).
+     Stopwatch/Timer derive elapsed time from stored TIMESTAMPS on every
+     render, so background-tab throttling can never cause drift.
+     ========================================================================== */
+  var ALARMS_KEY = 'remindly.alarms.v1';   // alarms are NOT reminders
+  var lastMainView = 'list';               // Clock's ‹ Back returns here
+  var alarmFired = {};                     // 'id:datetime' → shown (per session)
+  var alarmPickDays = [];                  // day-picker state for the Add row
+
+  /* ------------------------------ world clock ------------------------------ */
+  var WORLD_ZONES = [
+    { city: 'Delhi',    tz: 'Asia/Kolkata' },
+    { city: 'London',   tz: 'Europe/London' },
+    { city: 'New York', tz: 'America/New_York' },
+    { city: 'Tokyo',    tz: 'Asia/Tokyo' },
+    { city: 'Sydney',   tz: 'Australia/Sydney' }
+  ];
+
+  /** Render the world-clock rows (UTC offset + Tomorrow/Yesterday flag). */
+  function renderWorldClock() {
+    var pane = $('#worldPane');
+    if (!pane) return;
+    var now = new Date();
+    pane.innerHTML = WORLD_ZONES.map(function (z) {
+      var time = '--:--', sub = '';
+      try {
+        time = now.toLocaleTimeString('en-GB', { timeZone: z.tz, hour: '2-digit', minute: '2-digit' });
+        var parts = new Intl.DateTimeFormat('en', { timeZone: z.tz, timeZoneName: 'shortOffset' })
+                      .formatToParts(now);
+        parts.forEach(function (p) { if (p.type === 'timeZoneName') sub = p.value.replace('GMT', 'UTC'); });
+        var there = new Date(now.toLocaleString('en-US', { timeZone: z.tz }));
+        var dayDiff = Math.round((new Date(there.toDateString()) - new Date(new Date().toDateString())) / 86400000);
+        if (dayDiff === 1) sub += ' · tomorrow';
+        else if (dayDiff === -1) sub += ' · yesterday';
+      } catch (e) { /* unknown zone — leave placeholders */ }
+      return '<div class="wc-row"><span class="wc-city"><b>' + z.city + '</b><small>' + sub + '</small></span>' +
+             '<span class="wc-time">' + time + '</span></div>';
+    }).join('');
+  }
+
+  /* -------------------------------- alarms -------------------------------- */
+  /** Load alarms from their own storage key (fail-soft). */
+  function loadAlarms() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(ALARMS_KEY) || '[]');
+      if (Array.isArray(raw)) {
+        state.alarms = raw.filter(function (a) { return a && a.id && a.time; });
+      }
+    } catch (e) { /* keep [] */ }
+  }
+
+  /** Persist alarms; also resyncs QStash (see alarmsAsReminders). */
+  function saveAlarms() {
+    try { localStorage.setItem(ALARMS_KEY, JSON.stringify(state.alarms)); }
+    catch (e) { toast('⚠️', 'Storage full', 'Could not save alarms.'); }
+    schedulePushSync();                          // backend learns new/changed times
+  }
+
+  /** Next firing epoch-ms for an alarm, honouring repeat days (getDay()
+      indices). One-time alarms already past today roll to tomorrow.
+      Returns 0 only if the alarm can never fire (shouldn't happen). */
+  function alarmNextAt(a) {
+    var p = a.time.split(':');
+    var d = new Date();
+    d.setHours(+p[0], +p[1], 0, 0);
+    var days = (a.days && a.days.length) ? a.days : null;
+    for (var i = 0; i < 8; i++) {
+      var cand = new Date(d.getTime() + i * 86400000);
+      if (!days || days.indexOf(cand.getDay()) >= 0) {
+        if (cand.getTime() > Date.now() - 30000) return cand.getTime();   // 30s grace
+      }
+    }
+    return 0;
+  }
+
+  /** 1s heartbeat hook: fires due alarms (same 60s window as reminders).
+      Each datetime slot can only fire once per session. */
+  function alarmTick(now) {
+    state.alarms.forEach(function (a) {
+      if (!a.on) return;
+      var at = alarmNextAt(a);
+      if (!at || at > now || now - at >= 60000) return;
+      var key = a.id + ':' + at;
+      if (alarmFired[key]) return;
+      alarmFired[key] = true;
+      notifyLike({ id: a.id, title: '⏰ ' + (a.label || 'Alarm'), notes: '',
+                   date: toLocalISO(new Date(at)), time: a.time });
+    });
+  }
+
+  /** Enabled alarms as synthetic reminders for /api/sync — they reuse the
+      whole QStash push pipeline and arrive looking like reminder alerts. */
+  function alarmsAsReminders() {
+    return state.alarms.filter(function (a) { return a.on; }).map(function (a) {
+      var d = new Date(alarmNextAt(a) || Date.now());
+      return {
+        id: 'alarm-' + a.id,
+        title: '⏰ ' + (a.label || 'Alarm'),
+        notes: '',
+        date: toLocalISO(d),
+        time: pad(d.getHours()) + ':' + pad(d.getMinutes()),
+        repeat: 'none',
+        category: ''
+      };
+    });
+  }
+
+  var ADAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];   // index = getDay()
+
+  /** Alarm list (time · label · day chips · toggle · delete). */
+  function renderAlarmList() {
+    var el = $('#alarmList');
+    if (!el) return;
+    if (!state.alarms.length) {
+      el.innerHTML = '<div class="alarm-empty">No alarms yet — add one above. ⏰</div>';
+      return;
+    }
+    el.innerHTML = state.alarms.slice().sort(function (x, y) {
+      return (alarmNextAt(x) || 0) - (alarmNextAt(y) || 0);
+    }).map(function (a) {
+      var chips = a.days && a.days.length
+        ? ADAY_LETTERS.map(function (L, i) {
+            return '<span class="a-day' + (a.days.indexOf(i) >= 0 ? ' on' : '') + '">' + L + '</span>';
+          }).join('')
+        : '<span class="a-day on">Once</span>';
+      return '<div class="alarm-row' + (a.on ? '' : ' off') + '" data-id="' + a.id + '">' +
+        '<span class="a-time">' + fmtTime(a.time) + '</span>' +
+        '<span class="a-main"><span class="a-label">' + esc(a.label || 'Alarm') + '</span>' +
+        '<span class="a-days">' + chips + '</span></span>' +
+        '<span class="switch"><input type="checkbox" data-act="toggle"' + (a.on ? ' checked' : '') +
+        ' aria-label="Alarm on or off"><span class="knob"></span></span>' +
+        '<button class="icon-btn" data-act="del" title="Delete alarm" aria-label="Delete alarm">🗑️</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  /* ------------------------------- stopwatch ------------------------------- */
+  var sw = { running: false, startTs: 0, acc: 0, laps: [] };
+
+  /** Elapsed ms — computed from the stored START TIMESTAMP each render, so
+      background-tab timer throttling can never cause drift. */
+  function swElapsed() { return sw.acc + (sw.running ? Date.now() - sw.startTs : 0); }
+
+  /** MM:SS<small>.cs</small> (centisecond precision). */
+  function fmtSw(ms) {
+    function p2(x) { return (x < 10 ? '0' : '') + x; }
+    return p2(Math.floor(ms / 60000)) + ':' + p2(Math.floor(ms / 1000) % 60) +
+           '<small>.' + p2(Math.floor(ms / 10) % 100) + '</small>';
+  }
+
+  function renderStopwatch() {
+    var el = $('#swDisplay');
+    if (el) el.innerHTML = fmtSw(swElapsed());
+    if (sw.running) requestAnimationFrame(renderStopwatch);   // pauses when hidden
+  }
+
+  function swButtons() {
+    $('#swStartBtn').textContent = sw.running ? 'Pause' : 'Start';
+    $('#swLapBtn').disabled = !sw.running;
+    $('#swResetBtn').disabled = !sw.running && sw.acc === 0;
+  }
+
+  function renderLaps() {
+    $('#swLaps').innerHTML = sw.laps.slice().reverse().map(function (l) {
+      return '<div class="lap-row"><span class="n">Lap ' + l.n + '</span>' +
+        '<span class="t">' + fmtSw(l.split) + '</span>' +
+        '<span class="tot">' + fmtSw(l.total) + '</span></div>';
+    }).join('');
+  }
+
+  /* --------------------------------- timer --------------------------------- */
+  var timer = { running: false, endTs: 0, remainMs: 0, totalMs: 0, C: 0 };
+
+  /** Circumference of the progress ring (r=90 in the SVG). */
+  function setupTimerRing() {
+    var ring = $('#timerRing');
+    if (!ring) return;
+    timer.C = 2 * Math.PI * 90;
+    ring.style.strokeDasharray = timer.C;
+    ring.style.strokeDashoffset = 0;
+  }
+
+  /** Remaining ms — from the stored TARGET timestamp (drift-free). */
+  function timerRemaining() { return timer.running ? Math.max(0, timer.endTs - Date.now()) : timer.remainMs; }
+
+  function renderTimer() {
+    var ms = timerRemaining();
+    var s = Math.ceil(ms / 1000);
+    function p2(x) { return (x < 10 ? '0' : '') + x; }
+    var h = Math.floor(s / 3600);
+    $('#timerDisplay').textContent = (h ? h + ':' : '') + p2(Math.floor((s % 3600) / 60)) + ':' + p2(s % 60);
+    var ring = $('#timerRing');
+    if (ring && timer.totalMs) ring.style.strokeDashoffset = timer.C * (1 - ms / timer.totalMs);
+    if (timer.running && ms <= 0) { finishTimer(); return; }   // the instant it hits zero
+    if (timer.running) requestAnimationFrame(renderTimer);
+  }
+
+  /** Idle display reflects the H/M/S inputs (also used by presets). */
+  function renderTimerIdle() {
+    var s = Math.round((((+$('#timerH').value || 0) * 3600 + (+$('#timerM').value || 0) * 60 +
+            (+$('#timerS').value || 0)) * 1000) / 1000);
+    function p2(x) { return (x < 10 ? '0' : '') + x; }
+    var h = Math.floor(s / 3600);
+    $('#timerDisplay').textContent = (h ? h + ':' : '') + p2(Math.floor((s % 3600) / 60)) + ':' + p2(s % 60);
+    var ring = $('#timerRing');
+    if (ring) ring.style.strokeDashoffset = 0;
+  }
+
+  function timerButtons() {
+    $('#timerStartBtn').textContent = timer.running ? 'Pause' : 'Start';
+    $('#timerCancelBtn').disabled = !timer.running && !timer.remainMs;
+  }
+
+  /** 1s heartbeat hook: completes the timer even in backgrounded tabs
+      (rAF stops when hidden, so this is the reliable completion path). */
+  function timerTick() {
+    if (timer.running && timerRemaining() <= 0) finishTimer();
+    else if (timer.running && document.hidden) renderTimer();    // coarse refresh
+  }
+
+  function startPauseTimer() {
+    if (timer.running) {                                         // Pause
+      timer.remainMs = Math.max(0, timer.endTs - Date.now());
+      timer.running = false;
+    } else {
+      var total = timer.remainMs;                                // Resume…
+      if (!total) {                                              // …or fresh start
+        total = ((+$('#timerH').value || 0) * 3600 + (+$('#timerM').value || 0) * 60 +
+                 (+$('#timerS').value || 0)) * 1000;
+        if (total <= 0) { toast('⏱️', 'Set a time', 'Enter hours, minutes or seconds first.'); return; }
+      }
+      timer.totalMs = total;
+      timer.endTs = Date.now() + total;                          // drift-proof target
+      timer.running = true;
+    }
+    timerButtons();
+    renderTimer();
+  }
+
+  function cancelTimer() {
+    timer.running = false;
+    timer.remainMs = 0;
+    timer.totalMs = 0;
+    timerButtons();
+    renderTimerIdle();
+  }
+
+  function finishTimer() {
+    timer.running = false;
+    timer.remainMs = 0;
+    timerButtons();
+    $('#timerDisplay').textContent = '00:00';
+    var ring = $('#timerRing');
+    if (ring) ring.style.strokeDashoffset = timer.C;
+    notifyLike({ id: 'timer', title: '⏱️ Timer done', notes: '',
+                 date: toLocalISO(new Date()),
+                 time: pad(new Date().getHours()) + ':' + pad(new Date().getMinutes()) });
+    toast('⏱️', 'Time is up!', 'Your timer finished.');
+  }
+
+  /* ------------------------------ page wiring ------------------------------ */
+  function wireClockPage() {
+    // --- tabs ---
+    document.querySelectorAll('.ck-tab').forEach(function (t) {
+      t.addEventListener('click', function () {
+        document.querySelectorAll('.ck-tab').forEach(function (x) {
+          var on = x === t;
+          x.classList.toggle('on', on);
+          x.setAttribute('aria-selected', String(on));
+        });
+        document.querySelectorAll('.ck-pane').forEach(function (p) {
+          p.classList.toggle('on', p.dataset.pane === t.dataset.ck);
+        });
+      });
+    });
+
+    // --- back to the reminders view we came from ---
+    $('#ckBackBtn').addEventListener('click', function () { setView(lastMainView); });
+
+    // --- alarm day picker (Mon…Sun chips in the Add row) ---
+    document.querySelectorAll('[data-aday]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var d = +b.dataset.aday;
+        var i = alarmPickDays.indexOf(d);
+        if (i >= 0) { alarmPickDays.splice(i, 1); b.classList.remove('on'); }
+        else { alarmPickDays.push(d); b.classList.add('on'); }
+      });
+    });
+
+    // --- add alarm ---
+    $('#alarmSaveBtn').addEventListener('click', function () {
+      state.alarms.push({
+        id: uid(),
+        time: $('#alarmTime').value || '07:00',
+        label: $('#alarmLabel').value.trim(),
+        days: alarmPickDays.slice(),              // [] = one-time
+        on: true
+      });
+      $('#alarmLabel').value = '';
+      saveAlarms();                               // → also resyncs QStash
+      renderAlarmList();
+      toast('⏰', 'Alarm set', fmtTime($('#alarmTime').value || '07:00'));
+    });
+
+    // --- alarm list: delete (click) + on/off (change) ---
+    $('#alarmList').addEventListener('click', function (e) {
+      var row = e.target.closest('.alarm-row');
+      if (!row || e.target.dataset.act !== 'del') return;
+      state.alarms = state.alarms.filter(function (x) { return x.id !== row.dataset.id; });
+      saveAlarms();
+      renderAlarmList();
+    });
+    $('#alarmList').addEventListener('change', function (e) {
+      if (e.target.dataset.act !== 'toggle') return;
+      var row = e.target.closest('.alarm-row');
+      var a = row && state.alarms.find(function (x) { return x.id === row.dataset.id; });
+      if (!a) return;
+      a.on = e.target.checked;
+      saveAlarms();
+      row.classList.toggle('off', !a.on);
+    });
+
+    // --- stopwatch ---
+    $('#swStartBtn').addEventListener('click', function () {
+      if (sw.running) { sw.acc += Date.now() - sw.startTs; sw.running = false; }
+      else { sw.startTs = Date.now(); sw.running = true; }
+      swButtons();
+      renderStopwatch();
+    });
+    $('#swLapBtn').addEventListener('click', function () {
+      var total = swElapsed();
+      var prev = sw.laps.length ? sw.laps[sw.laps.length - 1].total : 0;
+      sw.laps.push({ n: sw.laps.length + 1, split: total - prev, total: total });
+      renderLaps();
+    });
+    $('#swResetBtn').addEventListener('click', function () {
+      sw.running = false; sw.startTs = 0; sw.acc = 0; sw.laps = [];
+      swButtons();
+      renderStopwatch();
+      renderLaps();
+    });
+
+    // --- timer ---
+    $('#timerStartBtn').addEventListener('click', startPauseTimer);
+    $('#timerCancelBtn').addEventListener('click', cancelTimer);
+    ['timerH', 'timerM', 'timerS'].forEach(function (id) {
+      $('#' + id).addEventListener('input', function () {
+        if (!timer.running && !timer.remainMs) renderTimerIdle();   // live preview
+      });
+    });
+    document.querySelectorAll('#timerPresets .ck-preset').forEach(function (b) {
+      b.addEventListener('click', function () {
+        document.querySelectorAll('#timerPresets .ck-preset').forEach(function (x) {
+          x.classList.toggle('on', x === b);
+        });
+        if (timer.running || timer.remainMs) cancelTimer();         // restart clean
+        $('#timerH').value = 0;
+        $('#timerM').value = b.dataset.mins;
+        $('#timerS').value = 0;
+        renderTimerIdle();
+      });
+    });
+
+    renderWorldClock();
+    renderTimerIdle();
   }
 
   /** Persist reminders. */
@@ -1933,7 +2574,7 @@ div.g-day:hover { transform: none; }
       reminders: state.reminders.map(function (r) {
         return { id: r.id, title: r.title, notes: r.notes, date: r.date,
                  time: r.time, repeat: r.repeat, category: r.category };
-      }),
+      }).concat(alarmsAsReminders()),   // alarms ride the same push pipeline
       completedIds: state.reminders.filter(function (r) { return r.done; }).map(function (r) { return r.id; }),
     };
   }
@@ -2575,6 +3216,13 @@ div.g-day:hover { transform: none; }
     }
   }
 
+  /** Unified fire path for reminders, alarms and the timer:
+      silent OS notification + the app's own (selected) alert sound. */
+  function notifyLike(rem) {
+    notify(rem);
+    playAlert();
+  }
+
   /** Fire a browser Notification (if allowed) for a due reminder. */
   function notify(rem) {
     var body = (rem.notes ? rem.notes + '\n' : '') + fmtDate(rem.date) + ' · ' + fmtTime(rem.time);
@@ -2613,8 +3261,7 @@ div.g-day:hover { transform: none; }
 
       if (!fired[r.id] && t <= now && now - t < 60000) { // fire within 1 min of due time
         fired[r.id] = true;
-        notify(r);
-        playAlert();
+        notifyLike(r);
 
         // Repeat rollover: push the reminder to its next occurrence.
         if (r.repeat === 'daily') {
@@ -2626,6 +3273,10 @@ div.g-day:hover { transform: none; }
     });
 
     if (changed) saveReminders();
+
+    // Alarms (Clock page) — independent of reminders, same 60s fire window.
+    alarmTick(now);
+    timerTick();
 
     // Midnight (or first tick after): refresh greeting + empty-state strip,
     // since "today" just moved and the glance window slides with it.
@@ -3196,6 +3847,12 @@ div.g-day:hover { transform: none; }
     restorePush();    // re-use the browser's saved push subscription if any
     checkBackend();   // show backend health line in the footer
     setInterval(tick, 1000);   // 1s: countdowns stay fresh, trigger check is cheap
+
+    // Clock page boot (alarms restore before the first tick can fire them).
+    loadAlarms();
+    renderAlarmList();
+    wireClockPage();
+    setupTimerRing();
   }
 
   init();
